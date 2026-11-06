@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-nunito: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-fredoka: 'Fredoka', 'Nunito', sans-serif;
+}
+
+body {
+  font-family: var(--font-nunito);
+  background-color: #f8fafc;
+  color: #1e293b;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: var(--font-fredoka);
+}
+
+/* Custom playful scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid #f1f5f9;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Fun kid-friendly bouncy button styling */
+.btn-bouncy {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 0 0 rgba(0, 0, 0, 0.15);
+}
+.btn-bouncy:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 0 rgba(0, 0, 0, 0.15);
+}
+.btn-bouncy:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.15);
+}
+
+/* Polka dot and star backgrounds */
+.bg-polka {
+  background-image: radial-gradient(rgba(14, 165, 233, 0.12) 2px, transparent 2px);
+  background-size: 24px 24px;
+}
+.bg-stars {
+  background-image: radial-gradient(rgba(245, 158, 11, 0.15) 2px, transparent 2px);
+  background-size: 32px 32px;
+}
