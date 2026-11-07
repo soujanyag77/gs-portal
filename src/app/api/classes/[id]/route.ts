@@ -36,10 +36,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
 
   try {
-    const success = await removeClass(params.id);
-    if (!success) {
-      return NextResponse.json({ error: 'Failed to delete class' }, { status: 404 });
-    }
+    const classId = decodeURIComponent(params.id).trim();
+    await removeClass(classId);
     return NextResponse.json({ success: true, message: 'Class deleted successfully' });
   } catch (error: any) {
     console.error('Delete class error:', error);

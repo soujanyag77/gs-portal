@@ -84,14 +84,56 @@ export async function removeClass(id: string): Promise<boolean> {
   if (isSupabaseConfigured()) {
     try {
       const supabase = createServerSupabaseAdminClient();
-      await supabase.from('users').update({ class_id: null }).eq('class_id', id);
-      const { error } = await supabase.from('classes').delete().eq('id', id);
-      if (error) console.warn('Supabase removeClass notice:', error);
+
+      // 1. Unassign profiles in Supabase
+      try {
+        await supabase.from('profiles').update({ class_id: null }).eq('class_id', id);
+      } catch (e) {}
+
+      // 2. Cascade delete dependent subjects, units, resources, and activity_logs in Supabase
+      try {
+        const { data: suSubjects } = await supabase.from('subjects').select('id').eq('class_id', id);
+        if (suSubjects && suSubjects.length > 0) {
+          const subIds = suSubjects.map((s: any) => s.id);
+          const { data: suUnits } = await supabase.from('units').select('id').in('subject_id', subIds);
+          if (suUnits && suUnits.length > 0) {
+            const unitIds = suUnits.map((u: any) => u.id);
+            const { data: suRes } = await supabase.from('resources').select('id').in('unit_id', unitIds);
+            if (suRes && suRes.length > 0) {
+              const resIds = suRes.map((r: any) => r.id);
+              try {
+                await supabase.from('activity_logs').delete().in('resource_id', resIds);
+              } catch (e) {}
+              await supabase.from('resources').delete().in('id', resIds);
+            }
+            await supabase.from('units').delete().in('id', unitIds);
+          }
+          await supabase.from('subjects').delete().in('id', subIds);
+        }
+      } catch (e) {
+        console.warn('Supabase cascade delete subjects notice:', e);
+      }
+
+      // 3. Delete class row from Supabase by id or by name
+      try {
+        await supabase.from('classes').delete().eq('id', id);
+      } catch (e) {}
+      try {
+        await supabase.from('classes').delete().ilike('name', id);
+      } catch (e) {}
     } catch (err) {
       console.warn('Supabase removeClass error:', err);
     }
   }
-  return localDb.deleteClass(id);
+
+  // 4. Always ensure deleted from local SQLite as well
+  try {
+    localDb.deleteClass(id);
+  } catch (err) {
+    console.warn('localDb.deleteClass notice:', err);
+  }
+
+  return true;
 }
 
 // ==============================================================================

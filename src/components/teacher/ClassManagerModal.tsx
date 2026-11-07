@@ -308,15 +308,26 @@ export default function ClassManagerModal({
 
   const handleDeleteClass = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This removes its subjects and students.`)) return;
+    setError('');
     try {
-      await safeFetchJson(`/api/classes/${id}`, { method: 'DELETE' });
+      await safeFetchJson(`/api/classes/${encodeURIComponent(id)}`, { method: 'DELETE' });
       sounds.pop();
-      setLocalClasses((prev) => prev.filter((c) => c.id !== id));
+      setLocalClasses((prev) => prev.filter((c) => c.id !== id && c.name.toLowerCase() !== name.toLowerCase()));
       setSuccessMessage(`Class "${name}" has been deleted.`);
       onRefresh();
     } catch (err: any) {
-      console.error('Delete class error:', err);
-      setError(err.message || 'Failed to delete class');
+      console.warn('Initial delete by id notice, trying fallback by name:', err);
+      try {
+        await safeFetchJson(`/api/classes/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        sounds.pop();
+        setLocalClasses((prev) => prev.filter((c) => c.id !== id && c.name.toLowerCase() !== name.toLowerCase()));
+        setSuccessMessage(`Class "${name}" has been deleted.`);
+        onRefresh();
+        return;
+      } catch (err2: any) {
+        console.error('Delete class error:', err2);
+        setError(err2.message || err.message || 'Failed to delete class');
+      }
     }
   };
 

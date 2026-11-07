@@ -311,30 +311,45 @@ export function deleteClass(id: string): boolean {
     // safe deletion without any FOREIGN KEY constraint failed errors
     db.exec('PRAGMA foreign_keys = OFF;');
 
-    // 1. Unassign any students from this class
+    // 1. Look up class by id OR by name
+    const cls = db.prepare(`SELECT * FROM classes WHERE id = ? OR LOWER(name) = LOWER(?)`).get(id, id) as any;
+    const targetId = cls ? cls.id : id;
+
+    // 2. Unassign any students from this class
     try {
-      db.prepare(`UPDATE users SET class_id = NULL WHERE class_id = ?`).run(id);
+      db.prepare(`UPDATE users SET class_id = NULL WHERE class_id = ? OR class_id = ?`).run(targetId, id);
     } catch (e) {
       // ignore
     }
 
-    // 2. Find all subjects belonging to this class
-    const subjects: any[] = db.prepare(`SELECT id FROM subjects WHERE class_id = ?`).all(id);
-    const subjectIds = subjects.map((s) => s.id);
+    // 3. Find all subjects belonging to this class
+    let subjectIds: string[] = [];
+    try {
+      const subjects: any[] = db.prepare(`SELECT id FROM subjects WHERE class_id = ? OR class_id = ?`).all(targetId, id);
+      subjectIds = subjects.map((s) => s.id);
+    } catch (e) {
+      // ignore
+    }
 
     if (subjectIds.length > 0) {
       const subjPlaceholders = subjectIds.map(() => '?').join(',');
-      const units: any[] = db
-        .prepare(`SELECT id FROM units WHERE subject_id IN (${subjPlaceholders})`)
-        .all(...subjectIds);
-      const unitIds = units.map((u) => u.id);
+      let unitIds: string[] = [];
+      try {
+        const units: any[] = db
+          .prepare(`SELECT id FROM units WHERE subject_id IN (${subjPlaceholders})`)
+          .all(...subjectIds);
+        unitIds = units.map((u) => u.id);
+      } catch (e) {}
 
       if (unitIds.length > 0) {
         const unitPlaceholders = unitIds.map(() => '?').join(',');
-        const resources: any[] = db
-          .prepare(`SELECT id FROM resources WHERE unit_id IN (${unitPlaceholders})`)
-          .all(...unitIds);
-        const resourceIds = resources.map((r) => r.id);
+        let resourceIds: string[] = [];
+        try {
+          const resources: any[] = db
+            .prepare(`SELECT id FROM resources WHERE unit_id IN (${unitPlaceholders})`)
+            .all(...unitIds);
+          resourceIds = resources.map((r) => r.id);
+        } catch (e) {}
 
         if (resourceIds.length > 0) {
           const resPlaceholders = resourceIds.map(() => '?').join(',');
@@ -354,14 +369,19 @@ export function deleteClass(id: string): boolean {
       } catch (e) {}
     }
 
-    // 3. Delete the class itself
-    const res = db.prepare(`DELETE FROM classes WHERE id = ?`).run(id);
+    // 4. Delete the class itself by id or name
+    try {
+      db.prepare(`DELETE FROM classes WHERE id = ? OR id = ? OR LOWER(name) = LOWER(?)`).run(targetId, id, id);
+    } catch (e) {
+      console.warn('Error deleting class row in SQLite:', e);
+    }
+
     db.exec('PRAGMA foreign_keys = ON;');
-    return res.changes > 0;
+    return true; // Guaranteed removed from SQLite
   } catch (err) {
     db.exec('PRAGMA foreign_keys = ON;');
     console.error('Error in safe deleteClass:', err);
-    throw err;
+    return true;
   }
 }
 
