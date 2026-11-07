@@ -16,6 +16,7 @@ import {
 // ==============================================================================
 
 export async function getClasses(): Promise<ClassItem[]> {
+  let suClasses: ClassItem[] = [];
   if (isSupabaseConfigured()) {
     try {
       const supabase = createServerSupabaseClient();
@@ -24,30 +25,66 @@ export async function getClasses(): Promise<ClassItem[]> {
         .select('*')
         .order('name', { ascending: true });
 
-      if (error) throw error;
-      const suClasses: ClassItem[] = (data || []).map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        grade_level: c.grade_level || 'Grade 1',
-        icon: c.icon || '🎒',
-        color: c.color || '#38bdf8',
-        created_at: c.created_at,
-      }));
-
-      // Merge with any local classes so created classes never disappear
-      const localClasses = localDb.listClasses();
-      const merged: ClassItem[] = [...suClasses];
-      for (const lc of localClasses) {
-        if (!merged.some((m) => m.id === lc.id || m.name.toLowerCase() === lc.name.toLowerCase())) {
-          merged.push(lc);
-        }
+      if (!error && data) {
+        suClasses = (data || []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          grade_level: c.grade_level || 'Grade 1',
+          icon: c.icon || '🎒',
+          color: c.color || '#38bdf8',
+          created_at: c.created_at,
+        }));
       }
-      return merged;
     } catch (err) {
       console.warn('Supabase getClasses error, falling back to local:', err);
     }
   }
-  return localDb.listClasses();
+
+  // Merge with any local classes so created classes never disappear
+  const localClasses = localDb.listClasses();
+  const merged: ClassItem[] = [...suClasses];
+  for (const lc of localClasses) {
+    const existing = merged.find((m) => m.id === lc.id || m.name.toLowerCase() === lc.name.toLowerCase());
+    if (!existing) {
+      merged.push({ ...lc });
+    } else {
+      if (lc.resource_count && !existing.resource_count) {
+        existing.resource_count = lc.resource_count;
+      }
+      if (lc.student_count && !existing.student_count) {
+        existing.student_count = lc.student_count;
+      }
+    }
+  }
+
+  const finalClasses = merged.length > 0 ? merged : localClasses;
+
+  // Dynamically compute real resource_count and student_count across all resources & students
+  try {
+    const allResources = await getResources();
+    const allStudents = await getStudents();
+
+    for (const cls of finalClasses) {
+      const clsNameLower = cls.name.trim().toLowerCase();
+      const matchedRes = allResources.filter((r) => {
+        if (r.class_id && (r.class_id === cls.id || r.class_id.toLowerCase() === clsNameLower)) return true;
+        if (r.class_name && r.class_name.trim().toLowerCase() === clsNameLower) return true;
+        return false;
+      });
+      cls.resource_count = Math.max(cls.resource_count || 0, matchedRes.length);
+
+      const matchedStu = allStudents.filter((s) => {
+        if (s.class_id && (s.class_id === cls.id || s.class_id.toLowerCase() === clsNameLower)) return true;
+        if (s.class_name && s.class_name.trim().toLowerCase() === clsNameLower) return true;
+        return false;
+      });
+      cls.student_count = Math.max(cls.student_count || 0, matchedStu.length);
+    }
+  } catch (countErr) {
+    console.warn('Dynamic count calculation error:', countErr);
+  }
+
+  return finalClasses;
 }
 
 export async function addClass(cls: {
@@ -315,38 +352,53 @@ export async function addStudent(stu: {
   if (isSupabaseConfigured()) {
     try {
       const supabase = createServerSupabaseAdminClient();
-      // Generate a uuid for the profile
-      const newId = '00000000-0000-4000-a000-' + Math.random().toString(16).substring(2, 14).padEnd(12, '0');
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert({
-          id: newId,
+      // Generate email for Supabase auth user so foreign key on profiles(id) is satisfied
+      const tempEmail = `stu_${Date.now()}_${Math.random().toString(36).substring(2, 7)}@school.local`;
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: tempEmail,
+        password: 'StudentTempPassword123!',
+        email_confirm: true,
+        user_metadata: {
           name: stu.name,
           role: 'student',
-          class_id: stu.class_id,
-          pin: stu.pin || '1234',
           avatar: stu.avatar || '🦊',
-          stars: 0,
-        })
-        .select('*, classes(name)')
-        .single();
+          class_id: stu.class_id,
+        },
+      });
 
-      if (!error && data) {
-        return {
-          id: data.id,
-          name: data.name,
-          role: 'student',
-          class_id: data.class_id,
-          class_name: data.classes?.name,
-          avatar: data.avatar,
-          stars: data.stars || 0,
-          pin: data.pin,
-        };
+      if (!authError && authData?.user) {
+        const { data: profData } = await supabase
+          .from('profiles')
+          .upsert({
+            id: authData.user.id,
+            name: stu.name,
+            role: 'student',
+            class_id: stu.class_id,
+            avatar: stu.avatar || '🦊',
+            stars: 0,
+            pin: stu.pin || '',
+          })
+          .select('*, classes(name)')
+          .maybeSingle();
+
+        if (profData) {
+          return {
+            id: profData.id,
+            name: profData.name,
+            role: 'student',
+            class_id: profData.class_id,
+            class_name: profData.classes?.name,
+            avatar: profData.avatar,
+            stars: profData.stars || 0,
+            pin: profData.pin,
+          };
+        }
       }
     } catch (err) {
       console.warn('Supabase addStudent error:', err);
     }
   }
+
   const id = 'stu_' + Math.random().toString(36).substring(2, 10);
   return localDb.createUser({
     id,

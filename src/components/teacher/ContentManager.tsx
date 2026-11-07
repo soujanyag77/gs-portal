@@ -181,6 +181,9 @@ export default function ContentManager() {
     }
   };
 
+  const classesUploadsSum = classes.reduce((sum, c) => sum + (c.resource_count || 0), 0);
+  const totalUploadsCount = Math.max(classesUploadsSum, !filterClassId ? resources.length : 0);
+
   return (
     <div className="space-y-6">
       {/* Top Banner: Quick Actions & Curriculum Setup */}
@@ -265,7 +268,7 @@ export default function ContentManager() {
                   Class-Wise Uploaded Materials
                 </h3>
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
-                  {classes.reduce((sum, c) => sum + (c.resource_count || 0), 0)} Total Uploads
+                  {totalUploadsCount} Total Uploads
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
@@ -288,7 +291,7 @@ export default function ContentManager() {
             }`}
           >
             <span>🌟</span>
-            <span>All Classrooms ({classes.reduce((sum, c) => sum + (c.resource_count || 0), 0)} files)</span>
+            <span>All Classrooms ({totalUploadsCount} files)</span>
           </button>
         </div>
 
@@ -296,7 +299,16 @@ export default function ContentManager() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {classes.map((cls) => {
             const isSelected = filterClassId === cls.id;
-            const fileCount = cls.resource_count || 0;
+            const classResCount = resources.filter(
+              (r) =>
+                r.class_id === cls.id ||
+                (r.class_name && r.class_name.trim().toLowerCase() === cls.name.trim().toLowerCase())
+            ).length;
+            const fileCount = Math.max(
+              cls.resource_count || 0,
+              classResCount,
+              filterClassId === cls.id ? resources.length : 0
+            );
             return (
               <button
                 key={cls.id}
@@ -664,7 +676,11 @@ export default function ContentManager() {
       {/* Modals for Curriculum Management */}
       <FileUploadModal
         isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
+        onClose={() => {
+          setIsUploadOpen(false);
+          loadResources();
+          loadClasses();
+        }}
         onUploadSuccess={() => {
           loadResources();
           loadClasses();
