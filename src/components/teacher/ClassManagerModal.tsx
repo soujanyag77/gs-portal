@@ -184,6 +184,35 @@ export default function ClassManagerModal({
     }
   };
 
+  const handleProvisionTechClasses = async () => {
+    setError('');
+    setLoading(true);
+    setSuccessMessage('');
+
+    try {
+      const data = await safeFetchJson('/api/classes/provision-tech', {
+        method: 'POST',
+      });
+
+      sounds.fanfare();
+      fireConfetti();
+      setSuccessMessage(
+        `🎉 Successfully configured standard tech classes (X A AI, X B AI, XI AI, XI CS, XII AI, XII CS)!`
+      );
+
+      if (data.classes) {
+        setLocalClasses(data.classes);
+      }
+      onRefresh();
+    } catch (err: any) {
+      console.error('Provision tech classes error:', err);
+      sounds.pop();
+      setError(err.message || 'Failed to provision standard tech classes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCreateOrUpdateFromFile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileNameInput.trim()) {
@@ -532,6 +561,27 @@ export default function ClassManagerModal({
             </div>
           ) : activeTab === 'classes' ? (
             <div className="space-y-6">
+              {/* Quick Provision Standard Tech Classes Banner */}
+              <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-sky-500 rounded-3xl p-4 text-white shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-indigo-200">
+                <div>
+                  <div className="text-xs font-black flex items-center gap-1.5 mb-0.5">
+                    <span className="text-base">⚡</span>
+                    <span>Standard Tech Classes: X A AI, X B AI, XI AI, XI CS, XII AI, XII CS</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-100 font-medium">
+                    1-Click instant configuration with class sections and AI / CS subjects.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleProvisionTechClasses}
+                  disabled={loading}
+                  className="btn-bouncy px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-black rounded-xl shadow-xs whitespace-nowrap self-stretch sm:self-auto text-center"
+                >
+                  ⚡ Provision 6 Classes
+                </button>
+              </div>
+
               {/* Create Class Form */}
               <form
                 onSubmit={handleCreateClass}
@@ -691,8 +741,16 @@ export default function ClassManagerModal({
                           </div>
                           <div>
                             <div className="text-sm font-extrabold text-slate-800">{cls.name}</div>
-                            <div className="text-[11px] text-slate-500">
-                              {cls.grade_level} • {cls.student_count || 0} students • {cls.subject_count || 0} subjects
+                            <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <span>{cls.grade_level}</span>
+                              <span>&bull;</span>
+                              <span className="font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+                                📁 {cls.resource_count || 0} {cls.resource_count === 1 ? 'file' : 'files'}
+                              </span>
+                              <span>&bull;</span>
+                              <span>{cls.student_count || 0} students</span>
+                              <span>&bull;</span>
+                              <span>{cls.subject_count || 0} subjects</span>
                             </div>
                           </div>
                         </div>

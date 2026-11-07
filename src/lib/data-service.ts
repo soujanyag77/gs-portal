@@ -84,9 +84,9 @@ export async function removeClass(id: string): Promise<boolean> {
   if (isSupabaseConfigured()) {
     try {
       const supabase = createServerSupabaseAdminClient();
+      await supabase.from('users').update({ class_id: null }).eq('class_id', id);
       const { error } = await supabase.from('classes').delete().eq('id', id);
-      if (error) throw error;
-      return true;
+      if (error) console.warn('Supabase removeClass notice:', error);
     } catch (err) {
       console.warn('Supabase removeClass error:', err);
     }

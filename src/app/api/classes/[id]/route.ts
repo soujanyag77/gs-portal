@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClassById, updateClass, deleteClass } from '@/lib/db';
+import { getClassById, updateClass } from '@/lib/db';
+import { removeClass } from '@/lib/data-service';
 import { getSessionUser } from '@/lib/auth';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -34,9 +35,17 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     return NextResponse.json({ error: 'Unauthorized. Teachers only.' }, { status: 403 });
   }
 
-  const success = deleteClass(params.id);
-  if (!success) {
-    return NextResponse.json({ error: 'Failed to delete class' }, { status: 404 });
+  try {
+    const success = await removeClass(params.id);
+    if (!success) {
+      return NextResponse.json({ error: 'Failed to delete class' }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, message: 'Class deleted successfully' });
+  } catch (error: any) {
+    console.error('Delete class error:', error);
+    return NextResponse.json(
+      { error: error?.message || 'Failed to delete class' },
+      { status: 500 }
+    );
   }
-  return NextResponse.json({ success: true, message: 'Class deleted successfully' });
 }

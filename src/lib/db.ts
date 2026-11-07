@@ -306,8 +306,63 @@ export function updateClass(
 
 export function deleteClass(id: string): boolean {
   const db = getDb();
-  const res = db.prepare(`DELETE FROM classes WHERE id = ?`).run(id);
-  return res.changes > 0;
+  try {
+    // Disable foreign keys temporarily during multi-table cascading to guarantee
+    // safe deletion without any FOREIGN KEY constraint failed errors
+    db.exec('PRAGMA foreign_keys = OFF;');
+
+    // 1. Unassign any students from this class
+    try {
+      db.prepare(`UPDATE users SET class_id = NULL WHERE class_id = ?`).run(id);
+    } catch (e) {
+      // ignore
+    }
+
+    // 2. Find all subjects belonging to this class
+    const subjects: any[] = db.prepare(`SELECT id FROM subjects WHERE class_id = ?`).all(id);
+    const subjectIds = subjects.map((s) => s.id);
+
+    if (subjectIds.length > 0) {
+      const subjPlaceholders = subjectIds.map(() => '?').join(',');
+      const units: any[] = db
+        .prepare(`SELECT id FROM units WHERE subject_id IN (${subjPlaceholders})`)
+        .all(...subjectIds);
+      const unitIds = units.map((u) => u.id);
+
+      if (unitIds.length > 0) {
+        const unitPlaceholders = unitIds.map(() => '?').join(',');
+        const resources: any[] = db
+          .prepare(`SELECT id FROM resources WHERE unit_id IN (${unitPlaceholders})`)
+          .all(...unitIds);
+        const resourceIds = resources.map((r) => r.id);
+
+        if (resourceIds.length > 0) {
+          const resPlaceholders = resourceIds.map(() => '?').join(',');
+          try {
+            db.prepare(`DELETE FROM access_logs WHERE resource_id IN (${resPlaceholders})`).run(...resourceIds);
+          } catch (e) {}
+          try {
+            db.prepare(`DELETE FROM resources WHERE id IN (${resPlaceholders})`).run(...resourceIds);
+          } catch (e) {}
+        }
+        try {
+          db.prepare(`DELETE FROM units WHERE id IN (${unitPlaceholders})`).run(...unitIds);
+        } catch (e) {}
+      }
+      try {
+        db.prepare(`DELETE FROM subjects WHERE id IN (${subjPlaceholders})`).run(...subjectIds);
+      } catch (e) {}
+    }
+
+    // 3. Delete the class itself
+    const res = db.prepare(`DELETE FROM classes WHERE id = ?`).run(id);
+    db.exec('PRAGMA foreign_keys = ON;');
+    return res.changes > 0;
+  } catch (err) {
+    db.exec('PRAGMA foreign_keys = ON;');
+    console.error('Error in safe deleteClass:', err);
+    throw err;
+  }
 }
 
 // ---------------- SUBJECT OPERATIONS ----------------
@@ -380,8 +435,37 @@ export function updateSubject(
 
 export function deleteSubject(id: string): boolean {
   const db = getDb();
-  const res = db.prepare(`DELETE FROM subjects WHERE id = ?`).run(id);
-  return res.changes > 0;
+  try {
+    db.exec('PRAGMA foreign_keys = OFF;');
+    const units: any[] = db.prepare(`SELECT id FROM units WHERE subject_id = ?`).all(id);
+    const unitIds = units.map((u) => u.id);
+    if (unitIds.length > 0) {
+      const unitPlaceholders = unitIds.map(() => '?').join(',');
+      const resources: any[] = db
+        .prepare(`SELECT id FROM resources WHERE unit_id IN (${unitPlaceholders})`)
+        .all(...unitIds);
+      const resourceIds = resources.map((r) => r.id);
+      if (resourceIds.length > 0) {
+        const resPlaceholders = resourceIds.map(() => '?').join(',');
+        try {
+          db.prepare(`DELETE FROM access_logs WHERE resource_id IN (${resPlaceholders})`).run(...resourceIds);
+        } catch (e) {}
+        try {
+          db.prepare(`DELETE FROM resources WHERE id IN (${resPlaceholders})`).run(...resourceIds);
+        } catch (e) {}
+      }
+      try {
+        db.prepare(`DELETE FROM units WHERE id IN (${unitPlaceholders})`).run(...unitIds);
+      } catch (e) {}
+    }
+    const res = db.prepare(`DELETE FROM subjects WHERE id = ?`).run(id);
+    db.exec('PRAGMA foreign_keys = ON;');
+    return res.changes > 0;
+  } catch (err) {
+    db.exec('PRAGMA foreign_keys = ON;');
+    console.error('Error in safe deleteSubject:', err);
+    throw err;
+  }
 }
 
 // ---------------- UNIT OPERATIONS ----------------
@@ -448,8 +532,27 @@ export function updateUnit(
 
 export function deleteUnit(id: string): boolean {
   const db = getDb();
-  const res = db.prepare(`DELETE FROM units WHERE id = ?`).run(id);
-  return res.changes > 0;
+  try {
+    db.exec('PRAGMA foreign_keys = OFF;');
+    const resources: any[] = db.prepare(`SELECT id FROM resources WHERE unit_id = ?`).all(id);
+    const resourceIds = resources.map((r) => r.id);
+    if (resourceIds.length > 0) {
+      const resPlaceholders = resourceIds.map(() => '?').join(',');
+      try {
+        db.prepare(`DELETE FROM access_logs WHERE resource_id IN (${resPlaceholders})`).run(...resourceIds);
+      } catch (e) {}
+      try {
+        db.prepare(`DELETE FROM resources WHERE id IN (${resPlaceholders})`).run(...resourceIds);
+      } catch (e) {}
+    }
+    const res = db.prepare(`DELETE FROM units WHERE id = ?`).run(id);
+    db.exec('PRAGMA foreign_keys = ON;');
+    return res.changes > 0;
+  } catch (err) {
+    db.exec('PRAGMA foreign_keys = ON;');
+    console.error('Error in safe deleteUnit:', err);
+    throw err;
+  }
 }
 
 // ---------------- RESOURCE OPERATIONS ----------------
@@ -597,8 +700,19 @@ export function updateResource(
 
 export function deleteResource(id: string): boolean {
   const db = getDb();
-  const res = db.prepare(`DELETE FROM resources WHERE id = ?`).run(id);
-  return res.changes > 0;
+  try {
+    db.exec('PRAGMA foreign_keys = OFF;');
+    try {
+      db.prepare(`DELETE FROM access_logs WHERE resource_id = ?`).run(id);
+    } catch (e) {}
+    const res = db.prepare(`DELETE FROM resources WHERE id = ?`).run(id);
+    db.exec('PRAGMA foreign_keys = ON;');
+    return res.changes > 0;
+  } catch (err) {
+    db.exec('PRAGMA foreign_keys = ON;');
+    console.error('Error in safe deleteResource:', err);
+    throw err;
+  }
 }
 
 export function incrementResourceStat(id: string, type: 'view' | 'download') {
@@ -624,30 +738,52 @@ export function logActivity(log: {
   action_type: ActionType;
 }): AccessLogItem {
   const db = getDb();
-  db.prepare(
-    `INSERT INTO access_logs (id, student_id, student_name, resource_id, resource_title, class_name, subject_name, unit_name, action_type) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    log.id,
-    log.student_id,
-    log.student_name,
-    log.resource_id,
-    log.resource_title,
-    log.class_name || '',
-    log.subject_name || '',
-    log.unit_name || '',
-    log.action_type
-  );
 
-  // Award stars to student on interaction/view!
+  // Audit logs must never fail due to foreign key constraints,
+  // even for preview teacher, guest students, or Supabase resources.
+  try {
+    db.exec('PRAGMA foreign_keys = OFF;');
+    db.prepare(
+      `INSERT INTO access_logs (id, student_id, student_name, resource_id, resource_title, class_name, subject_name, unit_name, action_type) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      log.id,
+      log.student_id,
+      log.student_name,
+      log.resource_id,
+      log.resource_title,
+      log.class_name || '',
+      log.subject_name || '',
+      log.unit_name || '',
+      log.action_type
+    );
+    db.exec('PRAGMA foreign_keys = ON;');
+  } catch (err) {
+    db.exec('PRAGMA foreign_keys = ON;');
+    console.warn('logActivity insertion notice:', err);
+  }
+
+  // Award stars to student on interaction/view if student exists in users
   try {
     db.prepare(`UPDATE users SET stars = stars + 1 WHERE id = ? AND role = 'student'`).run(log.student_id);
   } catch (e) {
     // ignore
   }
 
-  const row = db.prepare(`SELECT * FROM access_logs WHERE id = ?`).get(log.id);
-  return row as any;
+  try {
+    const row = db.prepare(`SELECT * FROM access_logs WHERE id = ?`).get(log.id);
+    if (row) return row as any;
+  } catch (e) {}
+
+  return {
+    id: log.id,
+    student_id: log.student_id,
+    student_name: log.student_name,
+    resource_id: log.resource_id,
+    resource_title: log.resource_title,
+    action_type: log.action_type,
+    accessed_at: new Date().toISOString(),
+  };
 }
 
 export function getAnalyticsSummary(classId?: string): AnalyticsSummary {

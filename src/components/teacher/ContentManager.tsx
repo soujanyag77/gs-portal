@@ -252,6 +252,95 @@ export default function ContentManager() {
         </div>
       </div>
 
+      {/* Class-Wise Uploaded Files Overview Bar */}
+      <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-800 flex items-center justify-center text-lg shadow-inner">
+              📂
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-slate-800 font-display">
+                  Class-Wise Uploaded Materials
+                </h3>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                  {classes.reduce((sum, c) => sum + (c.resource_count || 0), 0)} Total Uploads
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Click any classroom card below to instantly view and manage its uploaded files
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              sounds.pop();
+              setFilterClassId('');
+              setFilterSubjectId('');
+              setFilterUnitId('');
+            }}
+            className={`btn-bouncy px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              !filterClassId
+                ? 'bg-sky-500 text-white shadow-sm ring-2 ring-sky-300'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+            }`}
+          >
+            <span>🌟</span>
+            <span>All Classrooms ({classes.reduce((sum, c) => sum + (c.resource_count || 0), 0)} files)</span>
+          </button>
+        </div>
+
+        {/* Classroom Cards Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {classes.map((cls) => {
+            const isSelected = filterClassId === cls.id;
+            const fileCount = cls.resource_count || 0;
+            return (
+              <button
+                key={cls.id}
+                onClick={() => {
+                  sounds.pop();
+                  setFilterClassId(cls.id);
+                }}
+                className={`p-3.5 rounded-2xl text-left border-2 transition-all flex flex-col justify-between group cursor-pointer ${
+                  isSelected
+                    ? 'border-sky-500 bg-sky-50 shadow-bouncy ring-2 ring-sky-300 transform scale-102'
+                    : 'border-slate-100 hover:border-slate-300 bg-white hover:bg-slate-50/60 shadow-xs'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1 mb-2">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-xl shadow-inner group-hover:scale-110 transition-transform"
+                    style={{ backgroundColor: `${cls.color || '#38bdf8'}20` }}
+                  >
+                    {cls.icon || '🎒'}
+                  </div>
+                  <span
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      fileCount > 0
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
+                    {fileCount} {fileCount === 1 ? 'file' : 'files'}
+                  </span>
+                </div>
+                <div>
+                  <div className="font-black text-xs text-slate-800 group-hover:text-sky-600 transition-colors line-clamp-1">
+                    {cls.name}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+                    {cls.grade_level || 'Grade'}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Cascading Filters & Search Bar */}
       <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -365,13 +454,32 @@ export default function ContentManager() {
 
       {/* Resources Table / Grid */}
       <div className="bg-white rounded-3xl p-6 border-2 border-slate-100 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold font-display text-slate-800 flex items-center gap-2">
-            <span>Learning Resources</span>
-            <span className="bg-sky-100 text-sky-800 text-xs px-2.5 py-0.5 rounded-full font-extrabold">
-              {resources.length}
-            </span>
-          </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-bold font-display text-slate-800 flex items-center gap-2">
+              <span>Learning Resources</span>
+              <span className="bg-sky-100 text-sky-800 text-xs px-2.5 py-0.5 rounded-full font-extrabold">
+                {resources.length} {resources.length === 1 ? 'file' : 'files'}
+              </span>
+            </h3>
+
+            {filterClassId && (
+              <span className="text-xs font-black text-sky-800 bg-sky-100 px-3 py-1 rounded-full border border-sky-300 flex items-center gap-1.5 shadow-xs">
+                <span>Class:</span>
+                <span>{classes.find((c) => c.id === filterClassId)?.name || 'Filtered'}</span>
+                <button
+                  onClick={() => {
+                    sounds.pop();
+                    setFilterClassId('');
+                  }}
+                  className="hover:text-rose-600 font-black ml-1"
+                  title="Clear class filter"
+                >
+                  &times;
+                </button>
+              </span>
+            )}
+          </div>
 
           {classes.length === 0 && (
             <span className="text-xs text-amber-700 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
