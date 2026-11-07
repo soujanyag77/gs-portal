@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Plus,
   Upload,
@@ -238,6 +239,16 @@ export default function ContentManager() {
             <Folder className="w-4 h-4" />
             <span>+ Unit</span>
           </button>
+
+          <Link
+            href="/student/portal"
+            onClick={() => sounds.pop()}
+            className="btn-bouncy px-4 py-3 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-extrabold text-xs shadow-pop-green flex items-center gap-1.5 ml-auto sm:ml-0"
+            title="Preview learning portal as a student"
+          >
+            <Eye className="w-4 h-4" />
+            <span>Student View 👀</span>
+          </Link>
         </div>
       </div>
 

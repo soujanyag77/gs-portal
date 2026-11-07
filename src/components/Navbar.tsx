@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Volume2, VolumeX, LogOut, Sparkles, BookOpen, User as UserIcon } from 'lucide-react';
+import { Volume2, VolumeX, LogOut, Sparkles, BookOpen, User as UserIcon, Eye } from 'lucide-react';
 import { User } from '@/lib/types';
 import { sounds } from './sound-effects';
 
@@ -98,16 +98,28 @@ export default function Navbar({ user, onLogout }: NavbarProps) {
                 </div>
               ) : (
                 /* If teacher: show teacher badge */
-                <div className="flex items-center gap-2 bg-purple-50 border-2 border-purple-200 px-3.5 py-1.5 rounded-2xl">
-                  <span className="text-2xl">{user.avatar || '👩‍🏫'}</span>
-                  <div className="hidden sm:block">
-                    <div className="text-xs font-bold text-purple-900 leading-tight">
-                      {user.name}
-                    </div>
-                    <div className="text-[10px] text-purple-600 font-semibold uppercase tracking-wider">
-                      Teacher Dashboard
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-purple-50 border-2 border-purple-200 px-3.5 py-1.5 rounded-2xl">
+                    <span className="text-2xl">{user.avatar || '👩‍🏫'}</span>
+                    <div className="hidden sm:block">
+                      <div className="text-xs font-bold text-purple-900 leading-tight">
+                        {user.name}
+                      </div>
+                      <div className="text-[10px] text-purple-600 font-semibold uppercase tracking-wider">
+                        Teacher Dashboard
+                      </div>
                     </div>
                   </div>
+
+                  <Link
+                    href="/student/portal"
+                    onClick={() => sounds.pop()}
+                    className="btn-bouncy flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs shadow-pop-green transition-all"
+                    title="Open Student View"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span className="hidden md:inline">Student View</span>
+                  </Link>
                 </div>
               )}
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Sparkles,
@@ -8,10 +9,10 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
-  FolderOpen,
-  Star,
-  Award,
-  Filter,
+  Compass,
+  ArrowRight,
+  Eye,
+  School,
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import ResourceCard from '@/components/student/ResourceCard';
@@ -23,11 +24,19 @@ import DocumentCardModal from '@/components/student/DocumentCardModal';
 import EmptyState from '@/components/EmptyState';
 import { sounds } from '@/components/sound-effects';
 import { fireConfetti } from '@/components/ConfettiCelebration';
-import { User, SubjectItem, UnitItem, ResourceItem, FileType } from '@/lib/types';
+import { safeFetchJson } from '@/lib/api-client';
+import { User, ClassItem, SubjectItem, UnitItem, ResourceItem } from '@/lib/types';
 
 export default function StudentPortalPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [isTeacherPreview, setIsTeacherPreview] = useState<boolean>(false);
+
+  // Class Selection (supports cross-class learning for all students)
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [currentClassId, setCurrentClassId] = useState<string>('');
+
+  // Curriculum State
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [units, setUnits] = useState<UnitItem[]>([]);
@@ -48,43 +57,71 @@ export default function StudentPortalPage() {
   const [activeImage, setActiveImage] = useState<ResourceItem | null>(null);
   const [activeDoc, setActiveDoc] = useState<ResourceItem | null>(null);
 
-  // Check auth and load student profile
+  // 1. Check auth and initialize portal
   useEffect(() => {
-    async function initStudent() {
+    async function initPortal() {
       try {
-        const res = await fetch('/api/auth/me');
-        if (!res.ok) {
+        const authData = await safeFetchJson('/api/auth/me');
+        if (!authData.authenticated || !authData.user) {
           router.push('/student/login');
           return;
         }
-        const data = await res.json();
-        if (!data.user || data.user.role !== 'student') {
-          router.push('/student/login');
-          return;
-        }
-        setUser(data.user);
 
-        // Load subjects for student's class
-        const classId = data.user.class_id;
-        if (classId) {
-          const subRes = await fetch(`/api/subjects?class_id=${classId}`);
-          const subData = await subRes.json();
-          setSubjects(subData.subjects || []);
-          if (subData.subjects?.length > 0) {
-            setSelectedSubjectId(subData.subjects[0].id);
-          }
+        const currentUser = authData.user;
+        setUser(currentUser);
+        setIsTeacherPreview(currentUser.role === 'teacher');
+
+        // Load all classes
+        const classData = await safeFetchJson('/api/classes');
+        const classList: ClassItem[] = classData.classes || [];
+        setClasses(classList);
+
+        // Set initial class: student's class, or first class in list
+        const initialClassId = currentUser.class_id || (classList.length > 0 ? classList[0].id : '');
+        setCurrentClassId(initialClassId);
+
+        // Load subjects for initial class
+        if (initialClassId) {
+          await loadSubjectsForClass(initialClassId);
         }
       } catch (err) {
-        console.error(err);
+        console.error('Portal init error:', err);
         router.push('/student/login');
       } finally {
         setLoading(false);
       }
     }
-    initStudent();
+    initPortal();
   }, [router]);
 
-  // Load units whenever selected subject changes
+  // Load subjects when class changes
+  async function loadSubjectsForClass(classId: string) {
+    try {
+      const data = await safeFetchJson(`/api/subjects?class_id=${classId}`);
+      const subList: SubjectItem[] = data.subjects || [];
+      setSubjects(subList);
+      if (subList.length > 0) {
+        setSelectedSubjectId(subList[0].id);
+      } else {
+        setSelectedSubjectId('');
+        setUnits([]);
+        setResources([]);
+      }
+    } catch (err) {
+      console.error('Error loading subjects:', err);
+      setSubjects([]);
+      setSelectedSubjectId('');
+    }
+  }
+
+  // Handle class switcher (Cross-Class Interest Exploration)
+  const handleClassChange = async (newClassId: string) => {
+    sounds.pop();
+    setCurrentClassId(newClassId);
+    await loadSubjectsForClass(newClassId);
+  };
+
+  // 2. Load units whenever selected subject changes
   useEffect(() => {
     if (!selectedSubjectId) {
       setUnits([]);
@@ -92,61 +129,62 @@ export default function StudentPortalPage() {
     }
     async function loadUnits() {
       try {
-        const res = await fetch(`/api/units?subject_id=${selectedSubjectId}`);
-        const data = await res.json();
-        setUnits(data.units || []);
-        // Expand all units by default for convenient browsing
+        const data = await safeFetchJson(`/api/units?subject_id=${selectedSubjectId}`);
+        const unitList: UnitItem[] = data.units || [];
+        setUnits(unitList);
         const initialExpanded: Record<string, boolean> = {};
-        (data.units || []).forEach((u: UnitItem) => {
+        unitList.forEach((u) => {
           initialExpanded[u.id] = true;
         });
         setExpandedUnitIds(initialExpanded);
       } catch (err) {
-        console.error(err);
+        console.error('Error loading units:', err);
+        setUnits([]);
       }
     }
     loadUnits();
   }, [selectedSubjectId]);
 
-  // Load resources for student's class & selected subject
+  // 3. Load resources for active class & subject
   useEffect(() => {
-    const classId = user?.class_id;
-    if (!classId) return;
+    if (!currentClassId) return;
     async function loadResources() {
       try {
         const params = new URLSearchParams();
-        params.append('class_id', classId!);
+        params.append('class_id', currentClassId);
         if (selectedSubjectId) params.append('subject_id', selectedSubjectId);
         if (selectedType !== 'all') params.append('file_type', selectedType);
         if (searchQuery) params.append('search', searchQuery);
 
-        const res = await fetch(`/api/resources?${params.toString()}`);
-        const data = await res.json();
+        const data = await safeFetchJson(`/api/resources?${params.toString()}`);
         setResources(data.resources || []);
       } catch (err) {
-        console.error(err);
+        console.error('Error loading resources:', err);
+        setResources([]);
       }
     }
     loadResources();
-  }, [user, selectedSubjectId, selectedType, searchQuery]);
+  }, [currentClassId, selectedSubjectId, selectedType, searchQuery]);
 
   // Log activity event
   const logStudentEvent = async (resource: ResourceItem, action: 'view' | 'download' | 'interact') => {
     try {
-      await fetch('/api/analytics/log', {
+      await safeFetchJson('/api/analytics/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           resource_id: resource.id,
           action_type: action,
           student_id: user?.id,
-          student_name: user?.name,
+          student_name: isTeacherPreview ? `${user?.name} (Teacher Preview)` : user?.name,
         }),
       });
-      // Increment student's local stars counter
-      setUser((prev) => (prev ? { ...prev, stars: (prev.stars || 0) + 1 } : null));
+      // Increment local stars counter for students
+      if (!isTeacherPreview) {
+        setUser((prev) => (prev ? { ...prev, stars: (prev.stars || 0) + 1 } : null));
+      }
     } catch (err) {
-      console.error('Failed to log student event:', err);
+      console.error('Failed to log event:', err);
     }
   };
 
@@ -190,47 +228,127 @@ export default function StudentPortalPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400 font-display text-lg">
-        Opening your Class Library...
+        Opening Wonder Learning Library...
       </div>
     );
   }
 
+  const currentClass = classes.find((c) => c.id === currentClassId);
   const selectedSubject = subjects.find((s) => s.id === selectedSubjectId);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-sky-50 via-white to-amber-50/50 bg-polka">
       <Navbar user={user} />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* 👩‍🏫 Educator Preview Banner (Active when teacher is viewing as student) */}
+        {isTeacherPreview && (
+          <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-sky-600 text-white px-5 py-4 rounded-3xl shadow-lg border-2 border-purple-300 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop">
+            <div className="flex items-center gap-3 text-center sm:text-left">
+              <span className="text-3xl">👩‍🏫</span>
+              <div>
+                <div className="text-xs font-black uppercase tracking-wider text-purple-200 flex items-center gap-1.5 justify-center sm:justify-start">
+                  <Eye className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Educator Student View Mode</span>
+                </div>
+                <div className="text-xs font-medium text-white mt-0.5">
+                  You are previewing the learning portal through a student&apos;s eyes. Switch any classroom below to verify resources and simulations.
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/teacher/dashboard"
+              onClick={() => sounds.pop()}
+              className="btn-bouncy px-4 py-2.5 rounded-2xl bg-white text-purple-900 font-black text-xs shadow-sm hover:bg-purple-50 transition-colors flex items-center gap-2 whitespace-nowrap"
+            >
+              <span>↩ Return to Teacher Dashboard</span>
+            </Link>
+          </div>
+        )}
+
         {/* Welcome Student Hero Card */}
         <div className="bg-gradient-to-r from-amber-400 via-orange-400 to-pink-500 rounded-4xl p-6 sm:p-8 text-white shadow-bouncy flex flex-col sm:flex-row items-center justify-between gap-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
           <div className="flex items-center gap-5 text-center sm:text-left z-10">
             <div className="w-20 h-20 rounded-3xl bg-white/20 backdrop-blur-md flex items-center justify-center text-5xl shadow-lg border-2 border-white/40 animate-bounce">
-              {user?.avatar || '🦊'}
+              {user?.avatar || (isTeacherPreview ? '👩‍🏫' : '🦊')}
             </div>
             <div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/25 text-white text-xs font-black uppercase tracking-wider mb-2 border border-white/30">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>{user?.class_name || 'My Class'}</span>
+                <span>{user?.class_name || (isTeacherPreview ? 'Educator View' : 'All Classes Unlocked')}</span>
               </div>
-              <h1 className="text-3xl sm:text-4xl font-black font-display tracking-tight leading-tight">
-                Welcome back, {user?.name || 'Explorer'}! 🚀
+              <h1 className="text-2xl sm:text-4xl font-black font-display tracking-tight leading-tight">
+                Welcome, {user?.name || 'Explorer'}! 🚀
               </h1>
               <p className="text-xs sm:text-sm text-amber-100 font-bold mt-1">
-                Explore exciting stories, interactive games, science videos, and worksheets!
+                Explore exciting stories, interactive games, science videos, and worksheets across all classrooms!
               </p>
             </div>
           </div>
 
-          {/* Gamified Star Badge */}
+          {/* Gamified Star Badge (or Teacher View Badge) */}
           <div className="bg-white/20 backdrop-blur-md px-5 py-3 rounded-3xl border-2 border-white/40 flex items-center gap-3 shadow-md z-10">
-            <span className="text-3xl">⭐</span>
+            <span className="text-3xl">{isTeacherPreview ? '🎓' : '⭐'}</span>
             <div>
-              <div className="text-2xl font-black font-display leading-tight">{user?.stars || 0}</div>
+              <div className="text-2xl font-black font-display leading-tight">
+                {isTeacherPreview ? 'Preview' : user?.stars || 0}
+              </div>
               <div className="text-[11px] font-black uppercase tracking-wider text-amber-100">
-                Explorer Stars
+                {isTeacherPreview ? 'Educator Mode' : 'Explorer Stars'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 🏫 CLASSROOM SWITCHER / EXPLORER BAR (Cross-Class Interest Access) */}
+        <div className="bg-white rounded-3xl p-4 sm:p-5 border-3 border-sky-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 w-full md:w-auto">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-inner border"
+              style={{
+                backgroundColor: `${currentClass?.color || '#38bdf8'}25`,
+                borderColor: currentClass?.color || '#38bdf8',
+              }}
+            >
+              {currentClass?.icon || '🎒'}
+            </div>
+            <div>
+              <div className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Compass className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Currently Exploring:</span>
+              </div>
+              <div className="text-lg font-black font-display text-slate-800 flex items-center gap-2">
+                <span>{currentClass?.name || 'Classroom Library'}</span>
+                {currentClass?.grade_level && (
+                  <span className="text-xs font-bold text-sky-700 bg-sky-100 px-2.5 py-0.5 rounded-full border border-sky-200">
+                    {currentClass.grade_level}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Cross-Class Dropdown */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto">
+            <span className="text-xs font-black text-slate-600 whitespace-nowrap hidden sm:inline">
+              Explore Another Class:
+            </span>
+            <div className="relative flex-1 md:w-72">
+              <select
+                value={currentClassId}
+                onChange={(e) => handleClassChange(e.target.value)}
+                className="w-full text-xs font-extrabold bg-slate-50 hover:bg-slate-100 border-2 border-sky-300 rounded-2xl px-4 py-3 focus:bg-white focus:border-sky-500 focus:outline-none cursor-pointer appearance-none text-slate-800 transition-colors pr-10"
+              >
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.icon || '🎒'} {c.name} {c.grade_level ? `(${c.grade_level})` : ''}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-400">
+                ▼
               </div>
             </div>
           </div>
@@ -241,17 +359,17 @@ export default function StudentPortalPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-black font-display text-slate-800 flex items-center gap-2">
               <span>📚</span>
-              <span>Your Class Subjects</span>
+              <span>Class Subjects &amp; Courses</span>
             </h2>
-            <span className="text-xs font-bold text-slate-400">
+            <span className="text-xs font-bold text-slate-400 hidden sm:inline">
               Tap a subject to explore its units
             </span>
           </div>
 
           {subjects.length === 0 ? (
             <EmptyState
-              title="No subjects in your class yet!"
-              message="Your teacher is currently preparing lessons and subjects for your class. Check back soon!"
+              title={`No subjects in ${currentClass?.name || 'this class'} yet!`}
+              message="Your teacher is currently preparing lessons for this class. Select another class from the dropdown above to explore other materials!"
               icon="backpack"
             />
           ) : (
@@ -268,7 +386,7 @@ export default function StudentPortalPage() {
                     style={{
                       borderColor: isSelected ? sub.color_code : 'transparent',
                     }}
-                    className={`btn-bouncy p-4 rounded-3xl text-center border-3 transition-all flex flex-col items-center justify-center transform hover:scale-105 ${
+                    className={`btn-bouncy p-4 rounded-3xl text-center border-3 transition-all flex flex-col items-center justify-center transform hover:scale-105 cursor-pointer ${
                       isSelected
                         ? 'bg-white shadow-bouncy scale-105 ring-2 ring-offset-2'
                         : 'bg-white/70 hover:bg-white shadow-sm'
@@ -302,7 +420,7 @@ export default function StudentPortalPage() {
               { id: 'pdf', label: 'PDFs', emoji: '📄' },
               { id: 'html', label: 'Games & Sims', emoji: '🎮' },
               { id: 'video', label: 'Videos', emoji: '🎬' },
-              { id: 'audio', label: 'Stories', emoji: '🎵' },
+              { id: 'audio', label: 'Audio', emoji: '🎵' },
               { id: 'image', label: 'Pictures', emoji: '🖼️' },
               { id: 'document', label: 'Worksheets', emoji: '📝' },
             ].map((f) => (
@@ -312,7 +430,7 @@ export default function StudentPortalPage() {
                   sounds.pop();
                   setSelectedType(f.id);
                 }}
-                className={`px-3 py-1.5 rounded-2xl text-xs font-black transition-all flex items-center gap-1 ${
+                className={`px-3 py-1.5 rounded-2xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
                   selectedType === f.id
                     ? 'bg-sky-500 text-white shadow-sm'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
@@ -341,8 +459,8 @@ export default function StudentPortalPage() {
         <div className="space-y-6">
           {units.length === 0 ? (
             <EmptyState
-              title="Nothing here yet!"
-              message="Your teacher hasn't added units to this subject yet. Choose another subject or check back soon!"
+              title="No topics in this subject yet!"
+              message="Your teacher is currently organizing units for this subject. Switch subjects or choose another classroom above to explore!"
               icon="folder"
             />
           ) : (
@@ -397,7 +515,7 @@ export default function StudentPortalPage() {
                       {unitResources.length === 0 ? (
                         <EmptyState
                           title="Nothing here yet!"
-                          message="Your teacher hasn't added files to this unit."
+                          message="No files have been added to this topic yet."
                           icon="backpack"
                         />
                       ) : (

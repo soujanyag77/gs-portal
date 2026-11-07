@@ -381,7 +381,7 @@ export default function ClassManagerModal({
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Enroll Students</span>
+            <span>Student Roster</span>
           </button>
         </div>
 
@@ -727,6 +727,14 @@ export default function ClassManagerModal({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Auto-Registration Notice for Teachers */}
+              <div className="bg-sky-50 border-2 border-sky-200 p-3.5 rounded-2xl flex items-center gap-2.5 text-xs text-sky-900 shadow-sm">
+                <Sparkles className="w-4 h-4 text-sky-600 flex-shrink-0" />
+                <span>
+                  <strong>Tip:</strong> Students can directly sign in from the Student Portal by entering their Full Name and selecting their Class. Manual pre-enrollment here is optional!
+                </span>
               </div>
 
               {/* Add Student Form */}

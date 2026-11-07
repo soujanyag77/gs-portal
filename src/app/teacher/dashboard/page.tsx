@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FolderGit2, BarChart2, Plus, Sparkles } from 'lucide-react';
+import { FolderGit2, BarChart2, Plus, Sparkles, Eye } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import ContentManager from '@/components/teacher/ContentManager';
 import StudentAnalytics from '@/components/teacher/StudentAnalytics';
@@ -89,6 +90,16 @@ export default function TeacherDashboardPage() {
               <BarChart2 className="w-4 h-4" />
               <span>Student Analytics</span>
             </button>
+
+            <Link
+              href="/student/portal"
+              onClick={() => sounds.pop()}
+              className="btn-bouncy px-5 py-3 rounded-2xl text-sm font-extrabold flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-pop-green transition-all"
+              title="Experience portal as a student and test resources"
+            >
+              <Eye className="w-4 h-4 text-emerald-100" />
+              <span>Student View 👀</span>
+            </Link>
           </div>
 
           <div className="hidden md:flex items-center gap-2 text-xs font-bold text-slate-500 bg-white px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm">
