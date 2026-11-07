@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserById, getStudentByNameAndClass, getDb } from '@/lib/db';
+import { isSupabaseConfigured } from '@/lib/supabase/config';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { signToken, TOKEN_COOKIE_NAME } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
@@ -8,10 +10,39 @@ export async function POST(req: NextRequest) {
 
     let student: any = null;
 
-    if (studentId) {
-      student = getUserById(studentId);
-    } else if (studentName && classId) {
-      student = getStudentByNameAndClass(studentName, classId);
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createServerSupabaseClient();
+        let query = supabase.from('profiles').select('*, classes(name)').eq('role', 'student');
+        if (studentId) {
+          query = query.eq('id', studentId);
+        } else if (studentName && classId) {
+          query = query.ilike('name', studentName.trim()).eq('class_id', classId);
+        }
+        const { data: suProfile } = await query.maybeSingle();
+        if (suProfile) {
+          student = {
+            id: suProfile.id,
+            name: suProfile.name,
+            role: 'student',
+            class_id: suProfile.class_id,
+            class_name: suProfile.classes?.name,
+            avatar: suProfile.avatar,
+            stars: suProfile.stars || 0,
+            pin: suProfile.pin,
+          };
+        }
+      } catch (err) {
+        console.warn('Supabase student lookup notice:', err);
+      }
+    }
+
+    if (!student) {
+      if (studentId) {
+        student = getUserById(studentId);
+      } else if (studentName && classId) {
+        student = getStudentByNameAndClass(studentName, classId);
+      }
     }
 
     if (!student || student.role !== 'student') {
@@ -19,11 +50,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Check PIN if the student profile has a PIN set
-    const db = getDb();
-    const fullStudent: any = db.prepare('SELECT * FROM users WHERE id = ?').get(student.id);
-
-    if (fullStudent?.pin) {
-      if (!pin || pin.trim() !== fullStudent.pin.trim()) {
+    if (student.pin) {
+      if (!pin || pin.trim() !== student.pin.trim()) {
         return NextResponse.json({ error: 'Oops! That PIN is incorrect. Try again!' }, { status: 401 });
       }
     }

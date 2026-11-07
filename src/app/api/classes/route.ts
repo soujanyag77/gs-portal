@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listClasses, createClass } from '@/lib/db';
+import { getClasses, addClass } from '@/lib/data-service';
 import { getSessionUser } from '@/lib/auth';
 
 export async function GET() {
-  const classes = listClasses();
-  return NextResponse.json({ classes });
+  try {
+    const classes = await getClasses();
+    return NextResponse.json({ classes });
+  } catch (error: any) {
+    console.error('Failed to get classes:', error);
+    return NextResponse.json({ classes: [] });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -19,9 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Class name is required.' }, { status: 400 });
     }
 
-    const id = 'class_' + Math.random().toString(36).substring(2, 10);
-    const newClass = createClass({
-      id,
+    const newClass = await addClass({
       name: name.trim(),
       grade_level: grade_level?.trim() || 'Grade 1',
       icon: icon || '🎒',

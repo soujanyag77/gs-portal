@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listResources, createResource } from '@/lib/db';
+import { getResources, addResource } from '@/lib/data-service';
 import { getSessionUser } from '@/lib/auth';
 import { detectFileType } from '@/lib/file-types';
 import { saveUploadedFile } from '@/lib/storage';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const class_id = searchParams.get('class_id') || undefined;
-  const subject_id = searchParams.get('subject_id') || undefined;
-  const unit_id = searchParams.get('unit_id') || undefined;
-  const file_type = searchParams.get('file_type') || undefined;
-  const search = searchParams.get('search') || undefined;
+  try {
+    const { searchParams } = new URL(req.url);
+    const class_id = searchParams.get('class_id') || undefined;
+    const subject_id = searchParams.get('subject_id') || undefined;
+    const unit_id = searchParams.get('unit_id') || undefined;
+    const file_type = searchParams.get('file_type') || undefined;
+    const search = searchParams.get('search') || undefined;
 
-  const resources = listResources({ class_id, subject_id, unit_id, file_type, search });
-  return NextResponse.json({ resources });
+    const resources = await getResources({ class_id, subject_id, unit_id, file_type, search });
+    return NextResponse.json({ resources });
+  } catch (error: any) {
+    console.error('Failed to get resources:', error);
+    return NextResponse.json({ resources: [] });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -49,9 +54,9 @@ export async function POST(req: NextRequest) {
 
     const storedInfo = await saveUploadedFile(buffer, originalFileName, resourceId, mimeType);
 
-    const fileUrl = `/api/resources/${resourceId}/file`;
+    const fileUrl = storedInfo.publicUrl || `/api/resources/${resourceId}/file`;
 
-    const newResource = createResource({
+    const newResource = await addResource({
       id: resourceId,
       unit_id,
       title: title.trim(),

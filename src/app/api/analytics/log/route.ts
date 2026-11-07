@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getResourceById, logActivity, getUserById } from '@/lib/db';
+import { getResourceById, getUserById } from '@/lib/db';
+import { recordActivityLog } from '@/lib/data-service';
 import { getSessionUser } from '@/lib/auth';
 import { ActionType } from '@/lib/types';
 
@@ -14,9 +15,6 @@ export async function POST(req: NextRequest) {
     }
 
     const resource = getResourceById(resource_id);
-    if (!resource) {
-      return NextResponse.json({ error: 'Resource not found.' }, { status: 404 });
-    }
 
     // Determine student info
     let finalStudentId = sessionUser?.role === 'student' ? sessionUser.id : student_id;
@@ -28,29 +26,29 @@ export async function POST(req: NextRequest) {
     }
 
     if (!finalStudentId) {
-      // Fallback guest or anonymous student if not authenticated
       finalStudentId = 'stu_anon';
       finalStudentName = 'Explorer Student';
     } else if (!finalStudentName) {
-      const u = getUserById(finalStudentId);
-      finalStudentName = u?.name || 'Student';
+      try {
+        const u = getUserById(finalStudentId);
+        finalStudentName = u?.name || 'Student';
+      } catch {
+        finalStudentName = 'Student';
+      }
     }
 
     const validAction: ActionType = ['view', 'download', 'interact', 'complete'].includes(action_type)
       ? action_type
       : 'view';
 
-    const logId = 'log_' + Math.random().toString(36).substring(2, 10);
-
-    const logged = logActivity({
-      id: logId,
+    const logged = await recordActivityLog({
       student_id: finalStudentId,
       student_name: finalStudentName,
-      resource_id: resource.id,
-      resource_title: resource.title,
-      class_name: resource.class_name || 'General Class',
-      subject_name: resource.subject_name || 'General Subject',
-      unit_name: resource.unit_name || 'General Unit',
+      resource_id: resource?.id || resource_id,
+      resource_title: resource?.title || 'Class Material',
+      class_name: resource?.class_name || 'General Class',
+      subject_name: resource?.subject_name || 'General Subject',
+      unit_name: resource?.unit_name || 'General Unit',
       action_type: validAction,
     });
 

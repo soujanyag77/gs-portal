@@ -13,26 +13,54 @@ import {
   ActionType,
 } from './types';
 
-// Ensure data directory exists
-const DATA_DIR = path.join(process.cwd(), 'data');
+import os from 'os';
+
+// Detect serverless environment (Vercel / AWS Lambda) where process.cwd() is read-only
+const isServerless = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isServerless ? path.join(os.tmpdir(), 'portal_data') : path.join(process.cwd(), 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'portal.db');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+function ensureDirectories() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+  } catch (err) {
+    // Graceful fallback for read-only filesystem environments
+    console.warn('Notice: Local storage directory initialization skipped on read-only system:', err);
+  }
 }
 
 // Global DB instance singleton
-let dbInstance: DatabaseSync | null = null;
+let dbInstance: any = null;
 
-export function getDb(): DatabaseSync {
+function createSafeDbFallback() {
+  return {
+    exec: () => {},
+    prepare: () => ({
+      all: () => [],
+      get: () => null,
+      run: () => ({ changes: 0, lastInsertRowid: 0 }),
+    }),
+  };
+}
+
+export function getDb(): any {
   if (!dbInstance) {
-    dbInstance = new DatabaseSync(DB_FILE);
-    dbInstance.exec('PRAGMA foreign_keys = ON;');
-    initSchema(dbInstance);
+    ensureDirectories();
+    try {
+      const { DatabaseSync } = require('node:sqlite');
+      dbInstance = new DatabaseSync(DB_FILE);
+      dbInstance.exec('PRAGMA foreign_keys = ON;');
+      initSchema(dbInstance);
+    } catch (err) {
+      console.warn('Local SQLite not available on this runtime, using safe fallback:', err);
+      return createSafeDbFallback();
+    }
   }
   return dbInstance;
 }

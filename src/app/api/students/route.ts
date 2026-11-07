@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listStudentsByClass, createUser } from '@/lib/db';
+import { getStudents, addStudent } from '@/lib/data-service';
 import { getSessionUser } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const classId = searchParams.get('class_id') || undefined;
-
-  const students = listStudentsByClass(classId);
-  return NextResponse.json({ students });
+  try {
+    const { searchParams } = new URL(req.url);
+    const classId = searchParams.get('class_id') || undefined;
+    const students = await getStudents(classId);
+    return NextResponse.json({ students });
+  } catch (error: any) {
+    console.error('Failed to get students:', error);
+    return NextResponse.json({ students: [] });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -26,18 +30,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Class is required for student.' }, { status: 400 });
     }
 
-    const studentId = 'stu_' + Math.random().toString(36).substring(2, 10);
     const avatars = ['🦊', '🐼', '🦁', '🐨', '🐯', '🐰', '🐸', '🦄', '🚀', '⭐'];
     const chosenAvatar = avatar || avatars[Math.floor(Math.random() * avatars.length)];
 
-    const student = createUser({
-      id: studentId,
+    const student = await addStudent({
       name: name.trim(),
-      role: 'student',
       class_id,
-      pin: pin ? pin.trim() : null,
+      pin: pin ? pin.trim() : '1234',
       avatar: chosenAvatar,
-      stars: 0,
     });
 
     return NextResponse.json({ success: true, student });

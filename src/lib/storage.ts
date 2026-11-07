@@ -4,15 +4,24 @@ import AdmZip from 'adm-zip';
 import { isSupabaseConfigured } from './supabase/config';
 import { createServerSupabaseClient } from './supabase/server';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+import os from 'os';
+
+const isServerless = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isServerless ? path.join(os.tmpdir(), 'portal_data') : path.join(process.cwd(), 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const UNPACKED_DIR = path.join(UPLOADS_DIR, 'unpacked');
 
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-if (!fs.existsSync(UNPACKED_DIR)) {
-  fs.mkdirSync(UNPACKED_DIR, { recursive: true });
+function ensureUploadDirs() {
+  try {
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(UNPACKED_DIR)) {
+      fs.mkdirSync(UNPACKED_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.warn('Storage directory initialization skipped on serverless:', err);
+  }
 }
 
 export interface StoredFileInfo {
@@ -32,6 +41,7 @@ export async function saveUploadedFile(
   resourceId: string,
   mimeType: string
 ): Promise<StoredFileInfo> {
+  ensureUploadDirs();
   const ext = path.extname(originalFileName).toLowerCase();
   const safeBase = path
     .basename(originalFileName, ext)

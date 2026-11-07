@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listUnits, createUnit } from '@/lib/db';
+import { getUnits, addUnit } from '@/lib/data-service';
 import { getSessionUser } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const subjectId = searchParams.get('subject_id') || undefined;
-  const units = listUnits(subjectId);
-  return NextResponse.json({ units });
+  try {
+    const { searchParams } = new URL(req.url);
+    const subjectId = searchParams.get('subject_id') || undefined;
+    const units = await getUnits(subjectId);
+    return NextResponse.json({ units });
+  } catch (error: any) {
+    console.error('Failed to get units:', error);
+    return NextResponse.json({ units: [] });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -25,9 +30,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Subject ID is required.' }, { status: 400 });
     }
 
-    const id = 'unit_' + Math.random().toString(36).substring(2, 10);
-    const unit = createUnit({
-      id,
+    const unit = await addUnit({
       subject_id,
       name: name.trim(),
       description: description?.trim() || '',

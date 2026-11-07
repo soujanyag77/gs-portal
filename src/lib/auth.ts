@@ -66,7 +66,30 @@ export function getSessionUser(req?: NextRequest): User | null {
   const payload = verifyToken(token);
   if (!payload || !payload.userId) return null;
 
-  return getUserById(payload.userId);
+  if (payload.userId === 'teacher_default') {
+    return {
+      id: 'teacher_default',
+      name: payload.name || process.env.DEFAULT_TEACHER_NAME || 'Ms. Harper',
+      email: process.env.DEFAULT_TEACHER_EMAIL || 'teacher@school.edu',
+      role: 'teacher',
+      avatar: '👩‍🏫',
+    };
+  }
+
+  try {
+    const user = getUserById(payload.userId);
+    if (user) return user;
+  } catch {
+    // ignore
+  }
+
+  return {
+    id: payload.userId,
+    name: payload.name,
+    role: payload.role,
+    class_id: payload.classId || null,
+    avatar: payload.role === 'teacher' ? '👩‍🏫' : '🦊',
+  };
 }
 
 export { TOKEN_COOKIE_NAME };
