@@ -10,9 +10,11 @@ import {
   AlertCircle,
   FolderPlus,
   HelpCircle,
+  Wand2,
 } from 'lucide-react';
 import { ClassItem, SubjectItem, UnitItem, FileType } from '@/lib/types';
 import { detectFileType, FILE_TYPE_MAP, formatFileSize } from '@/lib/file-types';
+import { parseFileInfo, ParsedFileInfo } from '@/lib/filename-parser';
 import { sounds } from '../sound-effects';
 import { fireConfetti } from '../ConfettiCelebration';
 
@@ -50,8 +52,10 @@ export default function FileUploadModal({
   const [title, setTitle] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [detectedType, setDetectedType] = useState<FileType | null>(null);
+  const [parsedInfo, setParsedInfo] = useState<ParsedFileInfo | null>(null);
 
   const [loading, setLoading] = useState<boolean>(false);
+  const [autoCreating, setAutoCreating] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [dragActive, setDragActive] = useState<boolean>(false);
 
@@ -123,8 +127,13 @@ export default function FileUploadModal({
     setFile(chosenFile);
     setError('');
 
-    // Pre-populate title if empty
-    if (!title) {
+    // Parse filename for Class, Subject, Unit, Title
+    const parsed = parseFileInfo(chosenFile.name);
+    setParsedInfo(parsed);
+
+    if (parsed.title) {
+      setTitle(parsed.title);
+    } else if (!title) {
       const baseName = chosenFile.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
       setTitle(baseName.charAt(0).toUpperCase() + baseName.slice(1));
     }
@@ -132,6 +141,55 @@ export default function FileUploadModal({
     const type = detectFileType(chosenFile.name, chosenFile.type);
     setDetectedType(type);
     sounds.pop();
+  };
+
+  const handleAutoCreateOrUpdateFromFilename = async () => {
+    if (!file) return;
+    setAutoCreating(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/classes/from-filename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to auto-configure class.');
+
+      sounds.fanfare();
+      fireConfetti();
+
+      // Notify parent to refresh classes
+      onUploadSuccess();
+
+      if (data.class) {
+        setSelectedClassId(data.class.id);
+
+        // Load and select the subject
+        const subRes = await fetch(`/api/subjects?class_id=${data.class.id}`);
+        const subData = await subRes.json();
+        setSubjects(subData.subjects || []);
+
+        if (data.subject) {
+          setSelectedSubjectId(data.subject.id);
+
+          // Load and select the unit
+          const unitRes = await fetch(`/api/units?subject_id=${data.subject.id}`);
+          const unitData = await unitRes.json();
+          setUnits(unitData.units || []);
+
+          if (data.unit) {
+            setSelectedUnitId(data.unit.id);
+          }
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to auto-configure class from filename.');
+    } finally {
+      setAutoCreating(false);
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -161,29 +219,18 @@ export default function FileUploadModal({
       setError('Please choose or drop a file to upload.');
       return;
     }
-    if (!selectedClassId) {
-      setError('Please select a Class.');
-      return;
-    }
-    if (!selectedSubjectId) {
-      setError('Please select a Subject. If none exist, create one first!');
-      return;
-    }
-    if (!selectedUnitId) {
-      setError('Please select a Unit/Topic for this file.');
-      return;
-    }
-    if (!title.trim()) {
-      setError('Please provide a title for this resource.');
-      return;
-    }
 
     setLoading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('unit_id', selectedUnitId);
-      formData.append('title', title.trim());
+      if (selectedUnitId) {
+        formData.append('unit_id', selectedUnitId);
+      } else {
+        // Auto-create/update class, subject, unit from file information
+        formData.append('auto_create_class', 'true');
+      }
+      formData.append('title', (title || file.name.replace(/\.[^/.]+$/, '')).trim());
       formData.append('description', description.trim());
 
       const res = await fetch('/api/resources', {
@@ -221,7 +268,7 @@ export default function FileUploadModal({
             <div>
               <h2 className="text-xl font-bold font-display leading-tight">Upload Learning Resource</h2>
               <p className="text-xs text-sky-100 font-medium">
-                Organize with cascading Class &rarr; Subject &rarr; Unit tags
+                Organize or auto-create Class &rarr; Subject &rarr; Unit from file name
               </p>
             </div>
           </div>
@@ -245,92 +292,47 @@ export default function FileUploadModal({
             </div>
           )}
 
-          {/* Cascading Selectors */}
-          <div className="bg-sky-50/70 p-4 rounded-3xl border-2 border-sky-200 space-y-3">
-            <span className="text-xs font-extrabold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
-              <FolderPlus className="w-4 h-4 text-sky-600" />
-              1. Hierarchical Organization (Cascading Selectors)
-            </span>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Class Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Class / Grade</label>
-                <select
-                  value={selectedClassId}
-                  onChange={(e) => {
-                    setSelectedClassId(e.target.value);
-                    sounds.pop();
-                  }}
-                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none"
-                >
-                  <option value="">Select Class...</option>
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.icon || '🎒'} {c.name}
-                    </option>
-                  ))}
-                </select>
+          {/* Smart Auto-Detection Banner */}
+          {parsedInfo && (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-3xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-pop">
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-black text-amber-900">
+                  <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
+                  <span>Detected from File Information:</span>
+                </div>
+                <div className="text-[11px] font-bold text-slate-700 flex flex-wrap gap-2 pt-0.5">
+                  <span className="bg-white px-2.5 py-0.5 rounded-lg border border-amber-200 shadow-2xs">
+                    Class: <strong className="text-sky-700">{parsedInfo.className || 'Grade 1'}</strong>
+                  </span>
+                  {parsedInfo.subjectName && (
+                    <span className="bg-white px-2.5 py-0.5 rounded-lg border border-amber-200 shadow-2xs">
+                      Subject: <strong className="text-purple-700">{parsedInfo.subjectName}</strong>
+                    </span>
+                  )}
+                  {parsedInfo.unitName && (
+                    <span className="bg-white px-2.5 py-0.5 rounded-lg border border-amber-200 shadow-2xs">
+                      Unit: <strong className="text-amber-800">{parsedInfo.unitName}</strong>
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Subject Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Subject</label>
-                <select
-                  value={selectedSubjectId}
-                  onChange={(e) => {
-                    setSelectedSubjectId(e.target.value);
-                    sounds.pop();
-                  }}
-                  disabled={!selectedClassId || subjects.length === 0}
-                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="">
-                    {subjects.length === 0 ? 'No subjects in class' : 'Select Subject...'}
-                  </option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.icon || '📚'} {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Unit Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Unit / Chapter</label>
-                <select
-                  value={selectedUnitId}
-                  onChange={(e) => {
-                    setSelectedUnitId(e.target.value);
-                    sounds.pop();
-                  }}
-                  disabled={!selectedSubjectId || units.length === 0}
-                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="">
-                    {units.length === 0 ? 'No units in subject' : 'Select Unit...'}
-                  </option>
-                  {units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      📖 {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <button
+                type="button"
+                onClick={handleAutoCreateOrUpdateFromFilename}
+                disabled={autoCreating}
+                className="btn-bouncy px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-amber-950 font-black text-xs shadow-pop-yellow whitespace-nowrap flex items-center gap-1.5 self-end sm:self-center"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-amber-900" />
+                <span>{autoCreating ? 'Configuring...' : 'Auto-Create / Select Class'}</span>
+              </button>
             </div>
-
-            {(!selectedClassId || subjects.length === 0 || units.length === 0) && (
-              <p className="text-[11px] text-amber-700 font-medium">
-                💡 Tip: Make sure your chosen class has at least one Subject and Unit created! You can add them in Content Manager.
-              </p>
-            )}
-          </div>
+          )}
 
           {/* Drag & Drop File Picker */}
           <div>
             <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-              2. Select File (Automatic Type Detection)
+              1. Choose File (Auto-detects Class &amp; Format)
             </label>
 
             <div
@@ -389,14 +391,95 @@ export default function FileUploadModal({
                     📁
                   </div>
                   <p className="text-sm font-extrabold text-slate-700 mb-1">
-                    Drag and drop your file here, or{' '}
+                    Drag &amp; drop your file here, or{' '}
                     <span className="text-sky-600 underline">browse</span>
                   </p>
                   <p className="text-xs text-slate-400 font-medium max-w-md">
-                    Supports PDFs, HTML5 interactive games (.html / .zip packages), Images, Audio (MP3), Videos (MP4), and Documents (DOCX/PPTX).
+                    Files named like <code>Grade 1 - Science - Solar System.pdf</code> automatically configure their class!
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Cascading Selectors */}
+          <div className="bg-sky-50/70 p-4 rounded-3xl border-2 border-sky-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
+                <FolderPlus className="w-4 h-4 text-sky-600" />
+                2. Hierarchical Assignment
+              </span>
+              <span className="text-[11px] font-bold text-sky-600">
+                {selectedClassId ? 'Class Selected' : 'Auto-resolves on upload'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Class Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Class / Grade</label>
+                <select
+                  value={selectedClassId}
+                  onChange={(e) => {
+                    setSelectedClassId(e.target.value);
+                    sounds.pop();
+                  }}
+                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none"
+                >
+                  <option value="">Auto from filename...</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.icon || '🎒'} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subject Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Subject</label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => {
+                    setSelectedSubjectId(e.target.value);
+                    sounds.pop();
+                  }}
+                  disabled={!selectedClassId || subjects.length === 0}
+                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <option value="">
+                    {subjects.length === 0 ? 'Auto from filename...' : 'Select Subject...'}
+                  </option>
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.icon || '📚'} {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Unit Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Unit / Chapter</label>
+                <select
+                  value={selectedUnitId}
+                  onChange={(e) => {
+                    setSelectedUnitId(e.target.value);
+                    sounds.pop();
+                  }}
+                  disabled={!selectedSubjectId || units.length === 0}
+                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <option value="">
+                    {units.length === 0 ? 'Auto from filename...' : 'Select Unit...'}
+                  </option>
+                  {units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      📖 {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -404,11 +487,10 @@ export default function FileUploadModal({
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Resource Title <span className="text-rose-500">*</span>
+                Resource Title
               </label>
               <input
                 type="text"
-                required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Planets of our Solar System Activity"
@@ -434,11 +516,11 @@ export default function FileUploadModal({
           <div className="pt-2">
             <button
               type="submit"
-              disabled={loading || !file || !selectedUnitId}
+              disabled={loading || !file}
               className="btn-bouncy w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-extrabold text-sm shadow-pop-blue flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
-                <span>Uploading & Processing...</span>
+                <span>Publishing &amp; Auto-Organizing...</span>
               ) : (
                 <>
                   <Upload className="w-5 h-5" />

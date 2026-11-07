@@ -1,9 +1,23 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Users, School, Sparkles, AlertCircle, Key } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  Plus,
+  Trash2,
+  Users,
+  School,
+  Sparkles,
+  AlertCircle,
+  Key,
+  FileText,
+  Wand2,
+  CheckCircle2,
+} from 'lucide-react';
 import { ClassItem, User } from '@/lib/types';
+import { parseFileInfo, ParsedFileInfo } from '@/lib/filename-parser';
 import { sounds } from '../sound-effects';
+import { fireConfetti } from '../ConfettiCelebration';
 
 interface ClassManagerModalProps {
   isOpen: boolean;
@@ -18,13 +32,19 @@ export default function ClassManagerModal({
   classes,
   onRefresh,
 }: ClassManagerModalProps) {
-  const [activeTab, setActiveTab] = useState<'classes' | 'students'>('classes');
+  const [activeTab, setActiveTab] = useState<'classes' | 'students' | 'from-file'>('classes');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // New Class Form State
   const [className, setClassName] = useState<string>('');
   const [gradeLevel, setGradeLevel] = useState<string>('Grade 1');
   const [classIcon, setClassIcon] = useState<string>('🎒');
   const [classColor, setClassColor] = useState<string>('#38bdf8');
+
+  // From-File Form State
+  const [fileNameInput, setFileNameInput] = useState<string>('Grade 2 - Science - Solar System.pdf');
+  const [parsedFromFile, setParsedFromFile] = useState<ParsedFileInfo | null>(null);
+  const [fileActionSuccess, setFileActionSuccess] = useState<string>('');
 
   // New Student Form State
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
@@ -37,7 +57,7 @@ export default function ClassManagerModal({
   const [error, setError] = useState<string>('');
 
   const avatarOptions = ['🦊', '🐼', '🦁', '🐨', '🐯', '🐰', '🐸', '🦄', '🚀', '⭐', '🦖', '🎨'];
-  const iconOptions = ['🎒', '🚀', '🌟', '🏰', '🌈', '🦁', '🌿', '🎨'];
+  const iconOptions = ['🎒', '🚀', '🌟', '🏰', '🌈', '🦁', '🌿', '🎨', '🔬', '🪐'];
   const colorOptions = ['#38bdf8', '#a855f7', '#f472b6', '#4ade80', '#fb923c', '#facc15'];
 
   useEffect(() => {
@@ -45,6 +65,16 @@ export default function ClassManagerModal({
       setSelectedClassId(classes[0].id);
     }
   }, [classes, selectedClassId]);
+
+  // Parse filename whenever filenameInput changes
+  useEffect(() => {
+    if (fileNameInput.trim()) {
+      const parsed = parseFileInfo(fileNameInput.trim());
+      setParsedFromFile(parsed);
+    } else {
+      setParsedFromFile(null);
+    }
+  }, [fileNameInput]);
 
   // Load students for active class
   useEffect(() => {
@@ -87,12 +117,60 @@ export default function ClassManagerModal({
       if (!res.ok) throw new Error(data.error || 'Failed to create class');
 
       sounds.fanfare();
+      fireConfetti();
       setClassName('');
       onRefresh();
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateOrUpdateFromFile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fileNameInput.trim()) {
+      setError('Please enter or select a filename.');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    setFileActionSuccess('');
+
+    try {
+      const res = await fetch('/api/classes/from-filename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: fileNameInput.trim(),
+          createHierarchy: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to process class from filename');
+
+      sounds.fanfare();
+      fireConfetti();
+      setFileActionSuccess(
+        `Class "${data.class.name}" (${data.class.grade_level}) successfully ${
+          data.action === 'created' ? 'created' : 'matched/updated'
+        } as per file name information!`
+      );
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setFileNameInput(e.dataTransfer.files[0].name);
+      sounds.pop();
     }
   };
 
@@ -125,7 +203,6 @@ export default function ClassManagerModal({
 
       sounds.star();
       setStudentName('');
-      // Reload students
       const stuRes = await fetch(`/api/students?class_id=${selectedClassId}`);
       const stuData = await stuRes.json();
       setStudents(stuData.students || []);
@@ -159,6 +236,13 @@ export default function ClassManagerModal({
     }
   };
 
+  // Check if detected class already exists
+  const detectedExists =
+    parsedFromFile &&
+    classes.some(
+      (c) => c.name.toLowerCase() === (parsedFromFile.className || '').toLowerCase()
+    );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-pop">
       <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border-4 border-emerald-300 max-h-[92vh] flex flex-col">
@@ -169,9 +253,9 @@ export default function ClassManagerModal({
               🏫
             </div>
             <div>
-              <h2 className="text-xl font-bold font-display leading-tight">Class & Student Manager</h2>
+              <h2 className="text-xl font-bold font-display leading-tight">Class &amp; Student Manager</h2>
               <p className="text-xs text-emerald-100 font-medium">
-                Set up classrooms and add eager young learners
+                Set up classrooms manually, enroll students, or auto-configure from file names
               </p>
             </div>
           </div>
@@ -186,14 +270,14 @@ export default function ClassManagerModal({
           </button>
         </div>
 
-        {/* Dual Sub-Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 gap-3">
+        {/* Triple Tabs */}
+        <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 gap-2 overflow-x-auto">
           <button
             onClick={() => {
               sounds.pop();
               setActiveTab('classes');
             }}
-            className={`pb-3 px-4 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-all ${
+            className={`pb-3 px-3 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
               activeTab === 'classes'
                 ? 'border-emerald-500 text-emerald-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -202,19 +286,35 @@ export default function ClassManagerModal({
             <School className="w-4 h-4" />
             <span>Manage Classes ({classes.length})</span>
           </button>
+
+          <button
+            onClick={() => {
+              sounds.pop();
+              setActiveTab('from-file');
+            }}
+            className={`pb-3 px-3 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'from-file'
+                ? 'border-emerald-500 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Wand2 className="w-4 h-4 text-amber-500" />
+            <span>From File Name ✨</span>
+          </button>
+
           <button
             onClick={() => {
               sounds.pop();
               setActiveTab('students');
             }}
-            className={`pb-3 px-4 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-all ${
+            className={`pb-3 px-3 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
               activeTab === 'students'
                 ? 'border-emerald-500 text-emerald-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Add / Manage Students</span>
+            <span>Enroll Students</span>
           </button>
         </div>
 
@@ -225,12 +325,144 @@ export default function ClassManagerModal({
           </div>
         )}
 
+        {fileActionSuccess && (
+          <div className="mx-6 mt-4 p-3 bg-emerald-50 border-2 border-emerald-300 text-emerald-900 text-xs font-bold rounded-2xl flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{fileActionSuccess}</span>
+          </div>
+        )}
+
         {/* Body */}
         <div className="p-6 overflow-y-auto flex-1">
-          {activeTab === 'classes' ? (
+          {activeTab === 'from-file' ? (
+            /* Create or Update from File Name Tab */
+            <div className="space-y-6">
+              <form
+                onSubmit={handleCreateOrUpdateFromFile}
+                className="bg-gradient-to-r from-amber-50 to-orange-50 p-5 rounded-3xl border-2 border-amber-300 space-y-4"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">✨</span>
+                  <div>
+                    <h3 className="text-sm font-black text-amber-900 font-display">
+                      Create or Update Class as per File Information
+                    </h3>
+                    <p className="text-[11px] text-amber-700 font-medium">
+                      Enter any resource filename or drop a file. The portal extracts the Class, Grade Level, and suggested Icon/Color automatically!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Dropzone / Input */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    File Name (or drop file below):
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={fileNameInput}
+                    onChange={(e) => setFileNameInput(e.target.value)}
+                    placeholder="e.g. Grade 1 - Science - Solar System.pdf or Class 3_Math.docx"
+                    className="w-full text-xs font-bold bg-white border-2 border-amber-200 rounded-xl px-3 py-2.5 focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Optional File Picker */}
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleFileDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-4 bg-white/80 border-2 border-dashed border-amber-300 rounded-2xl text-center cursor-pointer hover:bg-white transition-colors"
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFileNameInput(e.target.files[0].name);
+                        sounds.pop();
+                      }
+                    }}
+                  />
+                  <div className="flex items-center justify-center gap-2 text-xs font-bold text-amber-800">
+                    <FileText className="w-4 h-4 text-amber-600" />
+                    <span>Drop any file here or click to select from computer</span>
+                  </div>
+                </div>
+
+                {/* Parsed Result Preview */}
+                {parsedFromFile && (
+                  <div className="bg-white p-4 rounded-2xl border border-amber-200 space-y-2">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                      Extracted Class Information:
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl shadow-inner"
+                        style={{ backgroundColor: `${parsedFromFile.classColor}25` }}
+                      >
+                        {parsedFromFile.classIcon}
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                          <span>{parsedFromFile.className || 'Grade 1'}</span>
+                          <span
+                            className="text-[10px] font-black px-2 py-0.5 rounded-full text-white"
+                            style={{ backgroundColor: parsedFromFile.classColor }}
+                          >
+                            {parsedFromFile.gradeLevel}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {detectedExists ? (
+                            <span className="text-amber-600 font-bold">
+                              ⚡ Class already exists in your school &mdash; will update details &amp; hierarchy
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 font-bold">
+                              ✨ New class will be created in your school roster
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {parsedFromFile.subjectName && (
+                      <div className="text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-100 flex items-center gap-1.5">
+                        <span>Also configures:</span>
+                        <strong className="text-purple-700">📚 {parsedFromFile.subjectName}</strong>
+                        <span>&bull;</span>
+                        <strong className="text-amber-800">📖 {parsedFromFile.unitName}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !fileNameInput.trim()}
+                  className="btn-bouncy w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs shadow-pop-yellow flex items-center justify-center gap-2"
+                >
+                  <Wand2 className="w-4 h-4 text-amber-100" />
+                  <span>
+                    {loading
+                      ? 'Processing...'
+                      : detectedExists
+                      ? 'Update Class as per File Information'
+                      : 'Create Class as per File Information'}
+                  </span>
+                </button>
+              </form>
+            </div>
+          ) : activeTab === 'classes' ? (
             <div className="space-y-6">
               {/* Create Class Form */}
-              <form onSubmit={handleCreateClass} className="bg-emerald-50/60 p-4 rounded-3xl border-2 border-emerald-200 space-y-4">
+              <form
+                onSubmit={handleCreateClass}
+                className="bg-emerald-50/60 p-4 rounded-3xl border-2 border-emerald-200 space-y-4"
+              >
                 <span className="text-xs font-black uppercase text-emerald-900 flex items-center gap-1.5">
                   <Plus className="w-4 h-4 text-emerald-600" /> Add New Classroom
                 </span>
@@ -274,7 +506,9 @@ export default function ClassManagerModal({
                         key={ic}
                         onClick={() => setClassIcon(ic)}
                         className={`text-lg p-1 rounded-xl transition-all ${
-                          classIcon === ic ? 'bg-white shadow-sm ring-2 ring-emerald-400 scale-110' : 'opacity-70'
+                          classIcon === ic
+                            ? 'bg-white shadow-sm ring-2 ring-emerald-400 scale-110'
+                            : 'opacity-70'
                         }`}
                       >
                         {ic}
@@ -370,7 +604,10 @@ export default function ClassManagerModal({
               </div>
 
               {/* Add Student Form */}
-              <form onSubmit={handleCreateStudent} className="bg-emerald-50/60 p-4 rounded-3xl border-2 border-emerald-200 space-y-4">
+              <form
+                onSubmit={handleCreateStudent}
+                className="bg-emerald-50/60 p-4 rounded-3xl border-2 border-emerald-200 space-y-4"
+              >
                 <span className="text-xs font-black uppercase text-emerald-900 flex items-center gap-1.5">
                   <Plus className="w-4 h-4 text-emerald-600" /> Enroll New Student
                 </span>
@@ -388,7 +625,9 @@ export default function ClassManagerModal({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">4-Digit PIN (Easy for Kids)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      4-Digit PIN (Easy for Kids)
+                    </label>
                     <input
                       type="text"
                       maxLength={4}
@@ -402,7 +641,9 @@ export default function ClassManagerModal({
 
                 {/* Avatar Picker */}
                 <div>
-                  <span className="block text-xs font-bold text-slate-700 mb-1.5">Choose Animal Avatar:</span>
+                  <span className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Choose Animal Avatar:
+                  </span>
                   <div className="flex flex-wrap gap-2">
                     {avatarOptions.map((av) => (
                       <button
@@ -410,7 +651,9 @@ export default function ClassManagerModal({
                         key={av}
                         onClick={() => setStudentAvatar(av)}
                         className={`text-2xl p-1.5 rounded-2xl transition-all ${
-                          studentAvatar === av ? 'bg-white shadow-md ring-3 ring-emerald-400 scale-110' : 'opacity-60 hover:opacity-100'
+                          studentAvatar === av
+                            ? 'bg-white shadow-md ring-3 ring-emerald-400 scale-110'
+                            : 'opacity-60 hover:opacity-100'
                         }`}
                       >
                         {av}
@@ -435,7 +678,9 @@ export default function ClassManagerModal({
                   Enrolled Students ({students.length})
                 </h4>
                 {students.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No students enrolled in this class yet. Add one above!</p>
+                  <p className="text-xs text-slate-400 italic">
+                    No students enrolled in this class yet. Add one above!
+                  </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {students.map((stu) => (
