@@ -503,6 +503,57 @@ export async function getResources(filters?: {
   return localDb.listResources(filters);
 }
 
+export async function getResourceById(id: string): Promise<ResourceItem | null> {
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = createServerSupabaseClient();
+      const { data, error } = await supabase
+        .from('resources')
+        .select(`
+          *,
+          units (
+            name,
+            subjects (
+              id,
+              name,
+              classes (
+                id,
+                name
+              )
+            )
+          )
+        `)
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          id: data.id,
+          unit_id: data.unit_id,
+          title: data.title,
+          description: data.description,
+          file_url: data.file_url,
+          file_name: data.file_name,
+          file_type: data.file_type,
+          file_size: Number(data.file_size) || 0,
+          mime_type: data.mime_type,
+          download_count: data.download_count || 0,
+          view_count: data.view_count || 0,
+          created_at: data.created_at,
+          unit_name: data.units?.name,
+          subject_id: data.units?.subjects?.id,
+          subject_name: data.units?.subjects?.name,
+          class_id: data.units?.subjects?.classes?.id,
+          class_name: data.units?.subjects?.classes?.name,
+        };
+      }
+    } catch (err) {
+      console.warn('Supabase getResourceById error:', err);
+    }
+  }
+  return localDb.getResourceById(id);
+}
+
 export async function addResource(res: {
   id: string;
   unit_id: string;

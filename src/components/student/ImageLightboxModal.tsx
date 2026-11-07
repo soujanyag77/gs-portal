@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, ZoomIn, ZoomOut, RotateCw, Download, Sparkles } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCw, Download, Sparkles, ExternalLink } from 'lucide-react';
 import { ResourceItem } from '@/lib/types';
 import { sounds } from '../sound-effects';
 
@@ -70,6 +70,18 @@ export default function ImageLightboxModal({ resource, onClose, onDownload }: Im
               title="Rotate 90°"
             >
               <RotateCw className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={() => {
+                sounds.fanfare();
+                window.open(resource.file_url || `/api/resources/${resource.id}/file`, '_blank');
+              }}
+              title="Open full image in new tab"
+              className="btn-bouncy flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs shadow-sm ml-2"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>New Tab ↗</span>
             </button>
 
             <button

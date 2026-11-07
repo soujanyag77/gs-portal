@@ -12,6 +12,7 @@ import {
   Sparkles,
   Music,
   Video as VideoIcon,
+  ExternalLink,
 } from 'lucide-react';
 import { ResourceItem } from '@/lib/types';
 import { sounds } from '../sound-effects';
@@ -112,6 +113,18 @@ export default function MediaViewerModal({ resource, onClose, onDownload }: Medi
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                sounds.fanfare();
+                window.open(mediaUrl, '_blank');
+              }}
+              title="Open media in new tab"
+              className="btn-bouncy flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs shadow-sm"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>New Tab ↗</span>
+            </button>
+
             <button
               onClick={() => {
                 sounds.star();

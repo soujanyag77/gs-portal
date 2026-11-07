@@ -53,8 +53,16 @@ export default function ResourceCard({ resource, onOpen, onDownload }: ResourceC
         </div>
 
         {/* Title */}
-        <h4 className="text-lg font-bold text-slate-800 font-display line-clamp-2 group-hover:text-sky-600 transition-colors mb-1.5">
-          {resource.title}
+        <h4
+          onClick={() => {
+            sounds.pop();
+            onOpen(resource);
+          }}
+          className="text-lg font-bold text-slate-800 font-display line-clamp-2 group-hover:text-sky-600 transition-colors mb-1.5 cursor-pointer flex items-center justify-between gap-1"
+          title="Click to open file in new tab"
+        >
+          <span>{resource.title}</span>
+          <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-sky-500 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" />
         </h4>
 
         {/* Description / Teacher Note */}
@@ -74,10 +82,12 @@ export default function ResourceCard({ resource, onOpen, onDownload }: ResourceC
             sounds.pop();
             onOpen(resource);
           }}
+          title="Open in new tab as per format"
           className={`btn-bouncy flex-1 py-2.5 px-3 rounded-2xl text-white font-extrabold text-xs flex items-center justify-center gap-2 ${action.btnColor}`}
         >
           <span>{action.icon}</span>
           <span>{action.label}</span>
+          <ExternalLink className="w-3.5 h-3.5 opacity-80" />
         </button>
 
         <button

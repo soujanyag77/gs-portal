@@ -58,6 +58,7 @@ export interface ResourceItem {
   file_type: FileType;
   file_size: number;
   mime_type?: string | null;
+  interactive_entry_url?: string;
   download_count: number;
   view_count: number;
   created_at: string;

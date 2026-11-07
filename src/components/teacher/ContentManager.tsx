@@ -16,6 +16,7 @@ import {
   Sparkles,
   Download,
   Check,
+  ExternalLink,
 } from 'lucide-react';
 import { ClassItem, SubjectItem, UnitItem, ResourceItem, FileType } from '@/lib/types';
 import { FILE_TYPE_MAP, formatFileSize } from '@/lib/file-types';
@@ -179,6 +180,38 @@ export default function ContentManager() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleOpenInNewTab = (resource: ResourceItem) => {
+    sounds.fanfare();
+    const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+
+    if (resource.file_type === 'html') {
+      const interactiveUrl = resource.interactive_entry_url || `/api/resources/${resource.id}/interactive/index.html`;
+      window.open(interactiveUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (resource.file_type === 'pdf') {
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (['audio', 'video', 'image'].includes(resource.file_type)) {
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (resource.file_type === 'document' || resource.file_name?.match(/\.(docx?|pptx?|xlsx?)$/i)) {
+      if (fileUrl.startsWith('http')) {
+        window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=false`, '_blank', 'noopener,noreferrer');
+      } else {
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    window.open(fileUrl, '_blank', 'noopener,noreferrer');
   };
 
   const classesUploadsSum = classes.reduce((sum, c) => sum + (c.resource_count || 0), 0);
@@ -537,9 +570,14 @@ export default function ContentManager() {
                       <td className="py-3.5 pl-2 max-w-xs">
                         <div className="flex items-center gap-2.5">
                           <span className="text-2xl">{typeInfo.emoji}</span>
-                          <div>
-                            <div className="font-extrabold text-slate-800 text-sm group-hover:text-sky-600 transition-colors">
-                              {res.title}
+                          <div
+                            onClick={() => handleOpenInNewTab(res)}
+                            className="cursor-pointer group/title"
+                            title="Click to open file in new tab as per format"
+                          >
+                            <div className="font-extrabold text-slate-800 text-sm group-hover:text-sky-600 transition-colors flex items-center gap-1.5">
+                              <span>{res.title}</span>
+                              <ExternalLink className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                             </div>
                             <div className="text-[11px] text-slate-400 font-medium truncate max-w-[200px]">
                               {res.file_name}
@@ -587,14 +625,23 @@ export default function ContentManager() {
                       {/* Action buttons */}
                       <td className="py-3.5 text-right pr-2">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Open in New Tab Button */}
+                          <button
+                            onClick={() => handleOpenInNewTab(res)}
+                            title="Open file in new tab as per format"
+                            className="p-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-600 transition-colors"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </button>
+
                           {/* Live Preview Button */}
                           <button
                             onClick={() => {
                               sounds.pop();
                               setPreviewResource(res);
                             }}
-                            title="Preview Kid View"
-                            className="p-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-600 transition-colors"
+                            title="Preview Kid View Modal"
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
                           >
                             <Eye className="w-4 h-4" />
                           </button>

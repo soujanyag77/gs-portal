@@ -159,21 +159,37 @@ export async function deleteStoredFile(storedFileName: string, resourceId?: stri
 }
 
 export function getUploadFilePath(storedFileName: string): string | null {
-  const filePath = path.join(UPLOADS_DIR, storedFileName);
-  if (fs.existsSync(filePath)) {
-    return filePath;
+  const candidateDirs = [
+    UPLOADS_DIR,
+    path.join(process.cwd(), 'data', 'uploads'),
+    path.join(os.tmpdir(), 'portal_data', 'uploads'),
+    path.join(process.cwd(), 'uploads'),
+    path.join(process.cwd(), 'public', 'uploads'),
+  ];
+  for (const dir of candidateDirs) {
+    if (!fs.existsSync(dir)) continue;
+    const filePath = path.join(dir, storedFileName);
+    if (fs.existsSync(filePath)) {
+      return filePath;
+    }
   }
   return null;
 }
 
 export function getUnpackedFilePath(resourceId: string, subPath: string): string | null {
-  const filePath = path.join(UNPACKED_DIR, resourceId, subPath);
-  const normalized = path.normalize(filePath);
-  if (!normalized.startsWith(path.join(UNPACKED_DIR, resourceId))) {
-    return null;
-  }
-  if (fs.existsSync(normalized)) {
-    return normalized;
+  const candidateUnpackedDirs = [
+    UNPACKED_DIR,
+    path.join(process.cwd(), 'data', 'uploads', 'unpacked'),
+    path.join(os.tmpdir(), 'portal_data', 'uploads', 'unpacked'),
+  ];
+  for (const baseDir of candidateUnpackedDirs) {
+    if (!fs.existsSync(baseDir)) continue;
+    const targetBase = path.join(baseDir, resourceId);
+    const filePath = path.join(targetBase, subPath);
+    const normalized = path.normalize(filePath);
+    if (normalized.startsWith(targetBase) && fs.existsSync(normalized)) {
+      return normalized;
+    }
   }
   return null;
 }

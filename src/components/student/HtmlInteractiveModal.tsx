@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, RotateCw, Maximize2, Minimize2, Sparkles, Gamepad2 } from 'lucide-react';
+import { X, RotateCw, Maximize2, Minimize2, Sparkles, Gamepad2, ExternalLink } from 'lucide-react';
 import { ResourceItem } from '@/lib/types';
 import { sounds } from '../sound-effects';
 import { fireConfetti } from '../ConfettiCelebration';
@@ -56,6 +56,19 @@ export default function HtmlInteractiveModal({ resource, onClose }: HtmlInteract
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                sounds.fanfare();
+                const targetUrl = resource.interactive_entry_url || resource.file_url || `/api/resources/${resource.id}/file`;
+                window.open(targetUrl, '_blank');
+              }}
+              className="btn-bouncy flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs shadow-sm"
+              title="Open full game in a new browser tab"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>New Tab ↗</span>
+            </button>
+
             <button
               onClick={handleCheer}
               className="btn-bouncy flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold text-xs shadow-sm"

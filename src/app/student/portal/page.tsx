@@ -188,33 +188,53 @@ export default function StudentPortalPage() {
     }
   };
 
-  // Open resource in format-specific modal
+  // Open resource in new tab as per format of file
   const handleOpenResource = (resource: ResourceItem) => {
-    sounds.star();
+    sounds.fanfare();
+    fireConfetti();
+    logStudentEvent(resource, resource.file_type === 'html' ? 'interact' : 'view');
+
+    const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+
+    // 1. Interactive HTML5 Packages / Games -> Open standalone in new tab
     if (resource.file_type === 'html') {
-      fireConfetti();
-      setActiveHtml(resource);
-      logStudentEvent(resource, 'interact');
-    } else if (resource.file_type === 'pdf') {
-      setActivePdf(resource);
-      logStudentEvent(resource, 'view');
-    } else if (['audio', 'video'].includes(resource.file_type)) {
-      setActiveMedia(resource);
-      logStudentEvent(resource, 'view');
-    } else if (resource.file_type === 'image') {
-      setActiveImage(resource);
-      logStudentEvent(resource, 'view');
-    } else {
-      setActiveDoc(resource);
-      logStudentEvent(resource, 'view');
+      const interactiveUrl = resource.interactive_entry_url || `/api/resources/${resource.id}/interactive/index.html`;
+      window.open(interactiveUrl, '_blank', 'noopener,noreferrer');
+      return;
     }
+
+    // 2. PDF Documents -> Browser Native PDF Reader in new tab
+    if (resource.file_type === 'pdf') {
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // 3. Audio / Video / Images -> Direct Media stream in new tab
+    if (['audio', 'video', 'image'].includes(resource.file_type)) {
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // 4. Word / Office Documents (.docx, .pptx, .xlsx) -> Viewer or Direct Stream in new tab
+    if (resource.file_type === 'document' || resource.file_name?.match(/\.(docx?|pptx?|xlsx?)$/i)) {
+      if (fileUrl.startsWith('http')) {
+        window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=false`, '_blank', 'noopener,noreferrer');
+      } else {
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    // 5. Default fallback -> open in new tab
+    window.open(fileUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleDownloadResource = (resource: ResourceItem) => {
     sounds.fanfare();
     fireConfetti();
     logStudentEvent(resource, 'download');
-    window.open(`${resource.file_url}?download=1`, '_blank');
+    const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+    window.open(`${fileUrl}?download=1`, '_blank');
   };
 
   const toggleUnitAccordion = (unitId: string) => {

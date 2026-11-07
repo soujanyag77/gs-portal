@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Download, ZoomIn, ZoomOut, Maximize2, FileText, Sparkles } from 'lucide-react';
+import { X, Download, ZoomIn, ZoomOut, Maximize2, FileText, Sparkles, ExternalLink } from 'lucide-react';
 import { ResourceItem } from '@/lib/types';
 import { sounds } from '../sound-effects';
 
@@ -56,6 +56,18 @@ export default function PdfViewerModal({ resource, onClose, onDownload }: PdfVie
               className="p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors"
             >
               <ZoomIn className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={() => {
+                sounds.fanfare();
+                window.open(resource.file_url || `/api/resources/${resource.id}/file`, '_blank');
+              }}
+              title="Open in Full New Tab"
+              className="btn-bouncy flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs ml-2 shadow-sm"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Open in New Tab ↗</span>
             </button>
 
             <button

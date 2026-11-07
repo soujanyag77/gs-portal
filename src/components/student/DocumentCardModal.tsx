@@ -65,12 +65,28 @@ export default function DocumentCardModal({ resource, onClose, onDownload }: Doc
             <button
               onClick={() => {
                 sounds.fanfare();
-                onDownload();
+                const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+                if (fileUrl.startsWith('http')) {
+                  window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=false`, '_blank');
+                } else {
+                  window.open(fileUrl, '_blank');
+                }
               }}
               className="btn-bouncy w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-extrabold text-base shadow-pop-purple flex items-center justify-center gap-2"
             >
-              <Download className="w-5 h-5" />
-              <span>Download & Open Worksheet</span>
+              <ExternalLink className="w-5 h-5" />
+              <span>Open in New Tab ↗</span>
+            </button>
+
+            <button
+              onClick={() => {
+                sounds.star();
+                onDownload();
+              }}
+              className="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download Worksheet</span>
             </button>
 
             <p className="text-xs text-slate-500 font-medium">
