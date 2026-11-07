@@ -38,21 +38,62 @@ const COMMON_SUBJECTS: Record<string, { icon: string; color: string }> = {
 };
 
 const GRADE_DEFAULTS: Record<string, { icon: string; color: string }> = {
+  'pre-k': { icon: '🧸', color: '#fb923c' },
+  nursery: { icon: '🧸', color: '#fb923c' },
+  lkg: { icon: '🧸', color: '#fb923c' },
+  ukg: { icon: '🧸', color: '#fb923c' },
   kindergarten: { icon: '🧸', color: '#fb923c' },
   'grade 1': { icon: '🎒', color: '#38bdf8' },
   'grade 2': { icon: '🚀', color: '#a855f7' },
   'grade 3': { icon: '🌟', color: '#facc15' },
   'grade 4': { icon: '🦁', color: '#4ade80' },
   'grade 5': { icon: '🔬', color: '#ec4899' },
+  'grade 6': { icon: '🧭', color: '#06b6d4' },
+  'grade 7': { icon: '⚡', color: '#f97316' },
+  'grade 8': { icon: '🏆', color: '#8b5cf6' },
+  'grade 9': { icon: '🔭', color: '#3b82f6' },
+  'grade 10': { icon: '🎓', color: '#10b981' },
+  'grade 11': { icon: '🏛️', color: '#6366f1' },
+  'grade 12': { icon: '👑', color: '#e11d48' },
+  // Roman Numerals
+  'grade i': { icon: '🎒', color: '#38bdf8' },
+  'grade ii': { icon: '🚀', color: '#a855f7' },
+  'grade iii': { icon: '🌟', color: '#facc15' },
+  'grade iv': { icon: '🦁', color: '#4ade80' },
+  'grade v': { icon: '🔬', color: '#ec4899' },
+  'grade vi': { icon: '🧭', color: '#06b6d4' },
+  'grade vii': { icon: '⚡', color: '#f97316' },
+  'grade viii': { icon: '🏆', color: '#8b5cf6' },
+  'grade ix': { icon: '🔭', color: '#3b82f6' },
+  'grade x': { icon: '🎓', color: '#10b981' },
+  'grade xi': { icon: '🏛️', color: '#6366f1' },
+  'grade xii': { icon: '👑', color: '#e11d48' },
+  'class i': { icon: '🎒', color: '#38bdf8' },
+  'class ii': { icon: '🚀', color: '#a855f7' },
+  'class iii': { icon: '🌟', color: '#facc15' },
+  'class iv': { icon: '🦁', color: '#4ade80' },
+  'class v': { icon: '🔬', color: '#ec4899' },
+  'class vi': { icon: '🧭', color: '#06b6d4' },
+  'class vii': { icon: '⚡', color: '#f97316' },
+  'class viii': { icon: '🏆', color: '#8b5cf6' },
+  'class ix': { icon: '🔭', color: '#3b82f6' },
+  'class x': { icon: '🎓', color: '#10b981' },
+  'class xi': { icon: '🏛️', color: '#6366f1' },
+  'class xii': { icon: '👑', color: '#e11d48' },
   default: { icon: '🎒', color: '#38bdf8' },
+};
+
+const ROMAN_NUMERALS: Record<string, number> = {
+  i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6,
+  vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12
 };
 
 export function parseFileInfo(fileName: string): ParsedFileInfo {
   const dotIndex = fileName.lastIndexOf('.');
   const rawBase = (dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName).trim();
 
-  // 1. Detect Class pattern (e.g. "Grade 1", "Class 2", "Kindergarten", "G3", "3rd Grade")
-  const classRegex = /(?:\[|\()?(Grade\s*\d+|Class\s*\d+|Kindergarten|Pre-?K|[1-5](?:st|nd|rd|th)\s*Grade|G[1-5])(?:\]|\))?/i;
+  // 1. Detect Class pattern (e.g. "Grade 1" to "Grade 12", "Class XII", "Kindergarten", "G12", "10th Grade")
+  const classRegex = /(?:\[|\()?(Grade\s*(?:1[0-2]|[1-9]|XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)|Class\s*(?:1[0-2]|[1-9]|XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)|Kindergarten|Pre-?K|Nursery|LKG|UKG|(?:1[0-2]|[1-9])(?:st|nd|rd|th)\s*Grade|G(?:1[0-2]|[1-9]))(?:\]|\))?/i;
   const classMatch = rawBase.match(classRegex);
 
   let className: string | null = null;
@@ -63,13 +104,19 @@ export function parseFileInfo(fileName: string): ParsedFileInfo {
     confidence = 'high';
     let matchedStr = classMatch[1].trim();
 
-    if (/^G(\d)$/i.test(matchedStr)) {
+    if (/^G(1[0-2]|[1-9])$/i.test(matchedStr)) {
       matchedStr = `Grade ${matchedStr.slice(1)}`;
     } else if (/^K$/i.test(matchedStr)) {
       matchedStr = 'Kindergarten';
-    } else if (/^([1-5])(?:st|nd|rd|th)\s*Grade$/i.test(matchedStr)) {
-      const num = matchedStr.match(/\d/)?.[0] || '1';
+    } else if (/^(1[0-2]|[1-9])(?:st|nd|rd|th)\s*Grade$/i.test(matchedStr)) {
+      const num = matchedStr.match(/\d+/)?.[0] || '1';
       matchedStr = `Grade ${num}`;
+    } else if (/(?:Grade|Class)\s*(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)$/i.test(matchedStr)) {
+      const roman = matchedStr.split(/\s+/)[1].toLowerCase();
+      const num = ROMAN_NUMERALS[roman];
+      if (num) {
+        matchedStr = `Grade ${num} (Class ${roman.toUpperCase()})`;
+      }
     }
 
     className = matchedStr.charAt(0).toUpperCase() + matchedStr.slice(1);

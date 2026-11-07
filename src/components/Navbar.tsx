@@ -28,6 +28,9 @@ export default function Navbar({ user, onLogout }: NavbarProps) {
 
   const handleLogoutClick = async () => {
     sounds.pop();
+    try {
+      localStorage.removeItem('portal_token');
+    } catch {}
     if (onLogout) {
       onLogout();
     } else {

@@ -32,6 +32,12 @@ export default function TeacherLoginPage() {
         throw new Error(data.error || 'Invalid credentials.');
       }
 
+      if (data.token) {
+        try {
+          localStorage.setItem('portal_token', data.token);
+        } catch {}
+      }
+
       sounds.fanfare();
       fireConfetti();
       router.push('/teacher/dashboard');

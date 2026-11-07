@@ -16,8 +16,29 @@ import {
 } from 'lucide-react';
 import { ClassItem, User } from '@/lib/types';
 import { parseFileInfo, ParsedFileInfo } from '@/lib/filename-parser';
+import { safeFetchJson } from '@/lib/api-client';
 import { sounds } from '../sound-effects';
 import { fireConfetti } from '../ConfettiCelebration';
+
+export const GRADE_LEVEL_OPTIONS = [
+  { value: 'Pre-K', label: 'Pre-K', icon: '🧸', color: '#fb923c' },
+  { value: 'Nursery', label: 'Nursery', icon: '🧸', color: '#fb923c' },
+  { value: 'LKG', label: 'LKG (Lower Kindergarten)', icon: '🧸', color: '#fb923c' },
+  { value: 'UKG', label: 'UKG (Upper Kindergarten)', icon: '🧸', color: '#fb923c' },
+  { value: 'Kindergarten', label: 'Kindergarten', icon: '🧸', color: '#fb923c' },
+  { value: 'Grade 1', label: 'Grade 1 (Class I)', icon: '🎒', color: '#38bdf8' },
+  { value: 'Grade 2', label: 'Grade 2 (Class II)', icon: '🚀', color: '#a855f7' },
+  { value: 'Grade 3', label: 'Grade 3 (Class III)', icon: '🌟', color: '#facc15' },
+  { value: 'Grade 4', label: 'Grade 4 (Class IV)', icon: '🦁', color: '#4ade80' },
+  { value: 'Grade 5', label: 'Grade 5 (Class V)', icon: '🔬', color: '#ec4899' },
+  { value: 'Grade 6', label: 'Grade 6 (Class VI)', icon: '🧭', color: '#06b6d4' },
+  { value: 'Grade 7', label: 'Grade 7 (Class VII)', icon: '⚡', color: '#f97316' },
+  { value: 'Grade 8', label: 'Grade 8 (Class VIII)', icon: '🏆', color: '#8b5cf6' },
+  { value: 'Grade 9', label: 'Grade 9 (Class IX)', icon: '🔭', color: '#3b82f6' },
+  { value: 'Grade 10', label: 'Grade 10 (Class X)', icon: '🎓', color: '#10b981' },
+  { value: 'Grade 11', label: 'Grade 11 (Class XI)', icon: '🏛️', color: '#6366f1' },
+  { value: 'Grade 12', label: 'Grade 12 (Class XII)', icon: '👑', color: '#e11d48' },
+];
 
 interface ClassManagerModalProps {
   isOpen: boolean;
@@ -34,12 +55,21 @@ export default function ClassManagerModal({
 }: ClassManagerModalProps) {
   const [activeTab, setActiveTab] = useState<'classes' | 'students' | 'from-file'>('classes');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const classNameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Synchronized Local Classes State for instant UI responsiveness
+  const [localClasses, setLocalClasses] = useState<ClassItem[]>(classes);
+
+  useEffect(() => {
+    setLocalClasses(classes);
+  }, [classes]);
 
   // New Class Form State
   const [className, setClassName] = useState<string>('');
   const [gradeLevel, setGradeLevel] = useState<string>('Grade 1');
   const [classIcon, setClassIcon] = useState<string>('🎒');
   const [classColor, setClassColor] = useState<string>('#38bdf8');
+  const [successMessage, setSuccessMessage] = useState<string>('');
 
   // From-File Form State
   const [fileNameInput, setFileNameInput] = useState<string>('Grade 2 - Science - Solar System.pdf');
@@ -57,16 +87,16 @@ export default function ClassManagerModal({
   const [error, setError] = useState<string>('');
 
   const avatarOptions = ['🦊', '🐼', '🦁', '🐨', '🐯', '🐰', '🐸', '🦄', '🚀', '⭐', '🦖', '🎨'];
-  const iconOptions = ['🎒', '🚀', '🌟', '🏰', '🌈', '🦁', '🌿', '🎨', '🔬', '🪐'];
-  const colorOptions = ['#38bdf8', '#a855f7', '#f472b6', '#4ade80', '#fb923c', '#facc15'];
+  const iconOptions = ['🎒', '🚀', '🌟', '🏰', '🌈', '🦁', '🌿', '🎨', '🔬', '🪐', '🧭', '⚡', '🏆', '🔭', '🎓', '👑'];
+  const colorOptions = ['#38bdf8', '#a855f7', '#f472b6', '#4ade80', '#fb923c', '#facc15', '#10b981', '#06b6d4', '#6366f1', '#e11d48'];
 
   useEffect(() => {
-    if (classes.length > 0 && !selectedClassId) {
-      setSelectedClassId(classes[0].id);
+    if (localClasses.length > 0 && !selectedClassId) {
+      setSelectedClassId(localClasses[0].id);
     }
-  }, [classes, selectedClassId]);
+  }, [localClasses, selectedClassId]);
 
-  // Parse filename whenever filenameInput changes
+  // Parse filename whenever fileNameInput changes
   useEffect(() => {
     if (fileNameInput.trim()) {
       const parsed = parseFileInfo(fileNameInput.trim());
@@ -81,8 +111,7 @@ export default function ClassManagerModal({
     if (!selectedClassId) return;
     async function loadStudents() {
       try {
-        const res = await fetch(`/api/students?class_id=${selectedClassId}`);
-        const data = await res.json();
+        const data = await safeFetchJson(`/api/students?class_id=${selectedClassId}`);
         setStudents(data.students || []);
       } catch (err) {
         console.error('Failed to load students:', err);
@@ -93,17 +122,30 @@ export default function ClassManagerModal({
 
   if (!isOpen) return null;
 
+  const handleGradeLevelChange = (selectedVal: string) => {
+    sounds.pop();
+    setGradeLevel(selectedVal);
+    const matched = GRADE_LEVEL_OPTIONS.find((g) => g.value === selectedVal);
+    if (matched) {
+      setClassIcon(matched.icon);
+      setClassColor(matched.color);
+    }
+  };
+
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!className.trim()) {
-      setError('Please provide a class name.');
+      sounds.pop();
+      setError('Please provide a class name (e.g. "Grade 10 - Mathematics" or "Class XII - Section A").');
+      classNameInputRef.current?.focus();
       return;
     }
     setError('');
+    setSuccessMessage('');
     setLoading(true);
 
     try {
-      const res = await fetch('/api/classes', {
+      const data = await safeFetchJson('/api/classes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -113,15 +155,30 @@ export default function ClassManagerModal({
           color: classColor,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create class');
 
       sounds.fanfare();
       fireConfetti();
+
+      const createdClass: ClassItem = data.class || {
+        id: 'cls_' + Date.now(),
+        name: className.trim(),
+        grade_level: gradeLevel,
+        icon: classIcon,
+        color: classColor,
+      };
+
+      setSuccessMessage(
+        `🎉 Classroom "${createdClass.name}" (${createdClass.grade_level}) created successfully!`
+      );
+
+      // Optimistically insert into local class roster immediately
+      setLocalClasses((prev) => [createdClass, ...prev.filter((c) => c.id !== createdClass.id)]);
       setClassName('');
       onRefresh();
     } catch (err: any) {
-      setError(err.message);
+      console.error('Create class error:', err);
+      sounds.pop();
+      setError(err.message || 'Failed to create classroom. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -130,6 +187,7 @@ export default function ClassManagerModal({
   const handleCreateOrUpdateFromFile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileNameInput.trim()) {
+      sounds.pop();
       setError('Please enter or select a filename.');
       return;
     }
@@ -138,7 +196,7 @@ export default function ClassManagerModal({
     setFileActionSuccess('');
 
     try {
-      const res = await fetch('/api/classes/from-filename', {
+      const data = await safeFetchJson('/api/classes/from-filename', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -147,9 +205,6 @@ export default function ClassManagerModal({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to process class from filename');
-
       sounds.fanfare();
       fireConfetti();
       setFileActionSuccess(
@@ -157,9 +212,16 @@ export default function ClassManagerModal({
           data.action === 'created' ? 'created' : 'matched/updated'
         } as per file name information!`
       );
+
+      if (data.class) {
+        setLocalClasses((prev) => [data.class, ...prev.filter((c) => c.id !== data.class.id)]);
+      }
+
       onRefresh();
     } catch (err: any) {
-      setError(err.message);
+      console.error('File class creation error:', err);
+      sounds.pop();
+      setError(err.message || 'Failed to process class from filename');
     } finally {
       setLoading(false);
     }
@@ -177,10 +239,12 @@ export default function ClassManagerModal({
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentName.trim()) {
+      sounds.pop();
       setError('Please enter the student’s name.');
       return;
     }
     if (!selectedClassId) {
+      sounds.pop();
       setError('Please select a class for this student.');
       return;
     }
@@ -188,7 +252,7 @@ export default function ClassManagerModal({
     setLoading(true);
 
     try {
-      const res = await fetch('/api/students', {
+      const data = await safeFetchJson('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -198,17 +262,16 @@ export default function ClassManagerModal({
           avatar: studentAvatar,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add student');
 
       sounds.star();
       setStudentName('');
-      const stuRes = await fetch(`/api/students?class_id=${selectedClassId}`);
-      const stuData = await stuRes.json();
+      const stuData = await safeFetchJson(`/api/students?class_id=${selectedClassId}`);
       setStudents(stuData.students || []);
       onRefresh();
     } catch (err: any) {
-      setError(err.message);
+      console.error('Student creation error:', err);
+      sounds.pop();
+      setError(err.message || 'Failed to add student');
     } finally {
       setLoading(false);
     }
@@ -217,29 +280,33 @@ export default function ClassManagerModal({
   const handleDeleteClass = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This removes its subjects and students.`)) return;
     try {
-      await fetch(`/api/classes/${id}`, { method: 'DELETE' });
+      await safeFetchJson(`/api/classes/${id}`, { method: 'DELETE' });
       sounds.pop();
+      setLocalClasses((prev) => prev.filter((c) => c.id !== id));
+      setSuccessMessage(`Class "${name}" has been deleted.`);
       onRefresh();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Delete class error:', err);
+      setError(err.message || 'Failed to delete class');
     }
   };
 
   const handleDeleteStudent = async (id: string) => {
     try {
-      await fetch(`/api/students/${id}`, { method: 'DELETE' });
+      await safeFetchJson(`/api/students/${id}`, { method: 'DELETE' });
       sounds.pop();
       setStudents(students.filter((s) => s.id !== id));
       onRefresh();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Delete student error:', err);
+      setError(err.message || 'Failed to delete student');
     }
   };
 
   // Check if detected class already exists
   const detectedExists =
     parsedFromFile &&
-    classes.some(
+    localClasses.some(
       (c) => c.name.toLowerCase() === (parsedFromFile.className || '').toLowerCase()
     );
 
@@ -284,7 +351,7 @@ export default function ClassManagerModal({
             }`}
           >
             <School className="w-4 h-4" />
-            <span>Manage Classes ({classes.length})</span>
+            <span>Manage Classes ({localClasses.length})</span>
           </button>
 
           <button
@@ -319,15 +386,22 @@ export default function ClassManagerModal({
         </div>
 
         {error && (
-          <div className="mx-6 mt-4 p-3 bg-rose-50 border-2 border-rose-200 text-rose-700 text-xs font-bold rounded-2xl flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <div className="mx-6 mt-4 p-3.5 bg-rose-50 border-2 border-rose-300 text-rose-800 text-xs font-bold rounded-2xl flex items-center gap-2 shadow-sm animate-pop">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}
 
+        {successMessage && (
+          <div className="mx-6 mt-4 p-3.5 bg-emerald-50 border-2 border-emerald-300 text-emerald-900 text-xs font-bold rounded-2xl flex items-center gap-2 shadow-sm animate-pop">
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+            <span>{successMessage}</span>
+          </div>
+        )}
+
         {fileActionSuccess && (
-          <div className="mx-6 mt-4 p-3 bg-emerald-50 border-2 border-emerald-300 text-emerald-900 text-xs font-bold rounded-2xl flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <div className="mx-6 mt-4 p-3.5 bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs font-bold rounded-2xl flex items-center gap-2 shadow-sm animate-pop">
+            <CheckCircle2 className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <span>{fileActionSuccess}</span>
           </div>
         )}
@@ -469,36 +543,75 @@ export default function ClassManagerModal({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Class Name</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Class Name <span className="text-emerald-600">*</span>
+                    </label>
                     <input
+                      ref={classNameInputRef}
                       type="text"
-                      required
                       value={className}
-                      onChange={(e) => setClassName(e.target.value)}
-                      placeholder="e.g. 1st Grade - Space Explorers"
-                      className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                      onChange={(e) => {
+                        setClassName(e.target.value);
+                        if (error) setError('');
+                      }}
+                      placeholder={`e.g. ${gradeLevel} - Space Explorers or Class XII - Physics`}
+                      className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none"
                     />
+
+                    {/* Quick Suggestions for fast setup */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+                      <span className="text-[10px] font-bold text-slate-400">Presets:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.pop();
+                          setClassName(gradeLevel);
+                        }}
+                        className="text-[10px] font-extrabold bg-emerald-100 hover:bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-lg transition-colors"
+                      >
+                        {gradeLevel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.pop();
+                          setClassName(`${gradeLevel} - Section A`);
+                        }}
+                        className="text-[10px] font-extrabold bg-emerald-100 hover:bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-lg transition-colors"
+                      >
+                        {gradeLevel} - Section A
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.pop();
+                          setClassName(`${gradeLevel} - Explorers`);
+                        }}
+                        className="text-[10px] font-extrabold bg-emerald-100 hover:bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-lg transition-colors"
+                      >
+                        {gradeLevel} - Explorers
+                      </button>
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Grade Level</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Grade Level (Up to Class XII)</label>
                     <select
                       value={gradeLevel}
-                      onChange={(e) => setGradeLevel(e.target.value)}
-                      className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                      onChange={(e) => handleGradeLevelChange(e.target.value)}
+                      className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none cursor-pointer"
                     >
-                      <option value="Kindergarten">Kindergarten</option>
-                      <option value="Grade 1">Grade 1</option>
-                      <option value="Grade 2">Grade 2</option>
-                      <option value="Grade 3">Grade 3</option>
-                      <option value="Grade 4">Grade 4</option>
-                      <option value="Grade 5">Grade 5</option>
+                      {GRADE_LEVEL_OPTIONS.map((g) => (
+                        <option key={g.value} value={g.value}>
+                          {g.icon} {g.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
 
                 {/* Icon & Color selector */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-bold text-slate-600 mr-1">Icon:</span>
                     {iconOptions.map((ic) => (
                       <button
@@ -534,24 +647,37 @@ export default function ClassManagerModal({
 
                 <button
                   type="submit"
-                  disabled={loading || !className.trim()}
-                  className="btn-bouncy w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs shadow-pop-green flex items-center justify-center gap-2"
+                  disabled={loading}
+                  className={`btn-bouncy w-full py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all ${
+                    loading
+                      ? 'bg-slate-300 text-slate-500 cursor-wait'
+                      : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-pop-green cursor-pointer'
+                  }`}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Create Classroom</span>
+                  {loading ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Creating Classroom...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>+ Create Classroom</span>
+                    </>
+                  )}
                 </button>
               </form>
 
               {/* Class List */}
               <div>
                 <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-2">
-                  Existing Classes ({classes.length})
+                  Existing Classes ({localClasses.length})
                 </h4>
-                {classes.length === 0 ? (
+                {localClasses.length === 0 ? (
                   <p className="text-xs text-slate-400 italic">No classes created yet. Add one above!</p>
                 ) : (
                   <div className="space-y-2">
-                    {classes.map((cls) => (
+                    {localClasses.map((cls) => (
                       <div
                         key={cls.id}
                         className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200"
@@ -595,7 +721,7 @@ export default function ClassManagerModal({
                   onChange={(e) => setSelectedClassId(e.target.value)}
                   className="flex-1 text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2 focus:border-emerald-500 focus:outline-none"
                 >
-                  {classes.map((c) => (
+                  {localClasses.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.icon || '🎒'} {c.name}
                     </option>

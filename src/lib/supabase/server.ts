@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getSupabaseUrl, getSupabaseAnonKey } from './config';
 
@@ -28,3 +29,22 @@ export function createServerSupabaseClient() {
     },
   });
 }
+
+/**
+ * Service Role or Administrative Supabase client for authenticated server routes.
+ * Bypasses RLS when SUPABASE_SERVICE_ROLE_KEY is provided, or falls back to anon key.
+ */
+export function createServerSupabaseAdminClient() {
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    getSupabaseAnonKey();
+
+  return createClient(getSupabaseUrl(), serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+

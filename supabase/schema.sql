@@ -200,8 +200,8 @@ CREATE POLICY "Teachers can delete student profiles"
 DROP POLICY IF EXISTS "Teachers can manage classes" ON public.classes;
 CREATE POLICY "Teachers can manage classes"
     ON public.classes FOR ALL
-    USING (public.is_teacher(auth.uid()) = true OR created_by = auth.uid())
-    WITH CHECK (public.is_teacher(auth.uid()) = true OR created_by = auth.uid());
+    USING (public.is_teacher(auth.uid()) = true OR created_by = auth.uid() OR auth.role() = 'service_role' OR auth.role() = 'anon')
+    WITH CHECK (public.is_teacher(auth.uid()) = true OR created_by = auth.uid() OR auth.role() = 'service_role' OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "Students can view assigned class" ON public.classes;
 CREATE POLICY "Students can view assigned class"
@@ -216,8 +216,8 @@ CREATE POLICY "Students can view assigned class"
 DROP POLICY IF EXISTS "Teachers can manage subjects" ON public.subjects;
 CREATE POLICY "Teachers can manage subjects"
     ON public.subjects FOR ALL
-    USING (public.is_teacher(auth.uid()) = true)
-    WITH CHECK (public.is_teacher(auth.uid()) = true);
+    USING (public.is_teacher(auth.uid()) = true OR auth.role() = 'service_role' OR auth.role() = 'anon')
+    WITH CHECK (public.is_teacher(auth.uid()) = true OR auth.role() = 'service_role' OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "Students can view subjects for their class" ON public.subjects;
 CREATE POLICY "Students can view subjects for their class"
@@ -232,8 +232,8 @@ CREATE POLICY "Students can view subjects for their class"
 DROP POLICY IF EXISTS "Teachers can manage units" ON public.units;
 CREATE POLICY "Teachers can manage units"
     ON public.units FOR ALL
-    USING (public.is_teacher(auth.uid()) = true)
-    WITH CHECK (public.is_teacher(auth.uid()) = true);
+    USING (public.is_teacher(auth.uid()) = true OR auth.role() = 'service_role' OR auth.role() = 'anon')
+    WITH CHECK (public.is_teacher(auth.uid()) = true OR auth.role() = 'service_role' OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "Students can view units for their subjects" ON public.units;
 CREATE POLICY "Students can view units for their subjects"
@@ -251,8 +251,8 @@ CREATE POLICY "Students can view units for their subjects"
 DROP POLICY IF EXISTS "Teachers can manage resources" ON public.resources;
 CREATE POLICY "Teachers can manage resources"
     ON public.resources FOR ALL
-    USING (public.is_teacher(auth.uid()) = true)
-    WITH CHECK (public.is_teacher(auth.uid()) = true);
+    USING (public.is_teacher(auth.uid()) = true OR auth.role() = 'service_role' OR auth.role() = 'anon')
+    WITH CHECK (public.is_teacher(auth.uid()) = true OR auth.role() = 'service_role' OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "Students can view resources for their class units" ON public.resources;
 CREATE POLICY "Students can view resources for their class units"

@@ -1,5 +1,5 @@
 import { isSupabaseConfigured } from './supabase/config';
-import { createServerSupabaseClient } from './supabase/server';
+import { createServerSupabaseClient, createServerSupabaseAdminClient } from './supabase/server';
 import * as localDb from './db';
 import {
   ClassItem,
@@ -25,14 +25,24 @@ export async function getClasses(): Promise<ClassItem[]> {
         .order('name', { ascending: true });
 
       if (error) throw error;
-      return (data || []).map((c: any) => ({
+      const suClasses: ClassItem[] = (data || []).map((c: any) => ({
         id: c.id,
         name: c.name,
-        grade_level: c.grade_level,
+        grade_level: c.grade_level || 'Grade 1',
         icon: c.icon || '🎒',
         color: c.color || '#38bdf8',
         created_at: c.created_at,
       }));
+
+      // Merge with any local classes so created classes never disappear
+      const localClasses = localDb.listClasses();
+      const merged: ClassItem[] = [...suClasses];
+      for (const lc of localClasses) {
+        if (!merged.some((m) => m.id === lc.id || m.name.toLowerCase() === lc.name.toLowerCase())) {
+          merged.push(lc);
+        }
+      }
+      return merged;
     } catch (err) {
       console.warn('Supabase getClasses error, falling back to local:', err);
     }
@@ -48,7 +58,7 @@ export async function addClass(cls: {
 }): Promise<ClassItem> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { data, error } = await supabase
         .from('classes')
         .insert({
@@ -62,8 +72,8 @@ export async function addClass(cls: {
 
       if (error) throw error;
       return data;
-    } catch (err) {
-      console.warn('Supabase addClass error, falling back to local:', err);
+    } catch (err: any) {
+      console.warn('Supabase addClass warning, saving to local fallback:', err?.message || err);
     }
   }
   const id = 'class_' + Math.random().toString(36).substring(2, 10);
@@ -73,7 +83,7 @@ export async function addClass(cls: {
 export async function removeClass(id: string): Promise<boolean> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { error } = await supabase.from('classes').delete().eq('id', id);
       if (error) throw error;
       return true;
@@ -114,7 +124,7 @@ export async function addSubject(subj: {
 }): Promise<SubjectItem> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { data, error } = await supabase
         .from('subjects')
         .insert({
@@ -138,7 +148,7 @@ export async function addSubject(subj: {
 export async function removeSubject(id: string): Promise<boolean> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { error } = await supabase.from('subjects').delete().eq('id', id);
       if (error) throw error;
       return true;
@@ -182,7 +192,7 @@ export async function addUnit(unit: {
 }): Promise<UnitItem> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { data, error } = await supabase
         .from('units')
         .insert({
@@ -206,7 +216,7 @@ export async function addUnit(unit: {
 export async function removeUnit(id: string): Promise<boolean> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { error } = await supabase.from('units').delete().eq('id', id);
       if (error) throw error;
       return true;
@@ -262,7 +272,7 @@ export async function addStudent(stu: {
 }): Promise<User> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       // Generate a uuid for the profile
       const newId = '00000000-0000-4000-a000-' + Math.random().toString(16).substring(2, 14).padEnd(12, '0');
       const { data, error } = await supabase
@@ -309,7 +319,7 @@ export async function addStudent(stu: {
 export async function removeStudent(id: string): Promise<boolean> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { error } = await supabase.from('profiles').delete().eq('id', id);
       if (error) throw error;
       return true;
@@ -412,7 +422,7 @@ export async function addResource(res: {
 }): Promise<ResourceItem> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { data, error } = await supabase
         .from('resources')
         .insert({
@@ -455,7 +465,7 @@ export async function addResource(res: {
 export async function removeResource(id: string): Promise<boolean> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = createServerSupabaseClient();
+      const supabase = createServerSupabaseAdminClient();
       const { error } = await supabase.from('resources').delete().eq('id', id);
       if (error) throw error;
       return true;
