@@ -9,8 +9,10 @@ import {
   FileText,
   AlertCircle,
   FolderPlus,
-  HelpCircle,
-  Wand2,
+  BookOpen,
+  School,
+  Folder,
+  Layers,
 } from 'lucide-react';
 import { ClassItem, SubjectItem, UnitItem, FileType } from '@/lib/types';
 import { detectFileType, FILE_TYPE_MAP, formatFileSize } from '@/lib/file-types';
@@ -28,6 +30,33 @@ interface FileUploadModalProps {
   initialUnitId?: string;
 }
 
+const STANDARD_CLASS_PRESETS = [
+  'X A AI',
+  'X B AI',
+  'XI AI',
+  'XI CS',
+  'XII AI',
+  'XII CS',
+];
+
+const STANDARD_SUBJECT_PRESETS = [
+  'Artificial Intelligence',
+  'Computer Science',
+  'Science',
+  'Mathematics',
+  'English',
+  'Physics',
+];
+
+const STANDARD_UNIT_PRESETS = [
+  'Unit 1 Introduction to AI',
+  'Unit 2 Python Basics',
+  'Unit 3 Machine Learning',
+  'Unit 1',
+  'Unit 2',
+  'Unit 3',
+];
+
 export default function FileUploadModal({
   isOpen,
   onClose,
@@ -39,13 +68,10 @@ export default function FileUploadModal({
 }: FileUploadModalProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Cascading selector state
-  const [selectedClassId, setSelectedClassId] = useState<string>(initialClassId || '');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(initialSubjectId || '');
-  const [selectedUnitId, setSelectedUnitId] = useState<string>(initialUnitId || '');
-
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [units, setUnits] = useState<UnitItem[]>([]);
+  // Editable typed hierarchy inputs
+  const [classNameInput, setClassNameInput] = useState<string>('');
+  const [subjectNameInput, setSubjectNameInput] = useState<string>('');
+  const [unitNameInput, setUnitNameInput] = useState<string>('');
 
   // File & form state
   const [file, setFile] = useState<File | null>(null);
@@ -55,70 +81,20 @@ export default function FileUploadModal({
   const [parsedInfo, setParsedInfo] = useState<ParsedFileInfo | null>(null);
 
   const [loading, setLoading] = useState<boolean>(false);
-  const [autoCreating, setAutoCreating] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [dragActive, setDragActive] = useState<boolean>(false);
 
-  // Update selected class when classes load
+  // Initialize from props
   useEffect(() => {
     if (initialClassId) {
-      setSelectedClassId(initialClassId);
-    } else if (classes.length > 0 && !selectedClassId) {
-      setSelectedClassId(classes[0].id);
-    }
-  }, [classes, initialClassId, selectedClassId]);
-
-  // Fetch subjects whenever class changes
-  useEffect(() => {
-    if (!selectedClassId) {
-      setSubjects([]);
-      setSelectedSubjectId('');
-      return;
-    }
-
-    async function loadSubjects() {
-      try {
-        const res = await fetch(`/api/subjects?class_id=${selectedClassId}`);
-        const data = await res.json();
-        setSubjects(data.subjects || []);
-        if (data.subjects?.length > 0) {
-          const match = initialSubjectId && data.subjects.some((s: any) => s.id === initialSubjectId);
-          setSelectedSubjectId(match ? (initialSubjectId as string) : data.subjects[0].id);
-        } else {
-          setSelectedSubjectId('');
-        }
-      } catch (err) {
-        console.error('Failed to load subjects:', err);
+      const match = classes.find((c) => c.id === initialClassId);
+      if (match && !classNameInput) {
+        setClassNameInput(match.name);
       }
+    } else if (classes.length > 0 && !classNameInput) {
+      setClassNameInput(classes[0].name);
     }
-    loadSubjects();
-  }, [selectedClassId, initialSubjectId]);
-
-  // Fetch units whenever subject changes
-  useEffect(() => {
-    if (!selectedSubjectId) {
-      setUnits([]);
-      setSelectedUnitId('');
-      return;
-    }
-
-    async function loadUnits() {
-      try {
-        const res = await fetch(`/api/units?subject_id=${selectedSubjectId}`);
-        const data = await res.json();
-        setUnits(data.units || []);
-        if (data.units?.length > 0) {
-          const match = initialUnitId && data.units.some((u: any) => u.id === initialUnitId);
-          setSelectedUnitId(match ? (initialUnitId as string) : data.units[0].id);
-        } else {
-          setSelectedUnitId('');
-        }
-      } catch (err) {
-        console.error('Failed to load units:', err);
-      }
-    }
-    loadUnits();
-  }, [selectedSubjectId, initialUnitId]);
+  }, [classes, initialClassId]);
 
   if (!isOpen) return null;
 
@@ -131,6 +107,29 @@ export default function FileUploadModal({
     const parsed = parseFileInfo(chosenFile.name);
     setParsedInfo(parsed);
 
+    // Auto-populate typed inputs with intelligent parsed values
+    if (parsed.className) {
+      setClassNameInput(parsed.className);
+    } else if (!classNameInput && classes.length > 0) {
+      setClassNameInput(classes[0].name);
+    }
+
+    if (parsed.subjectName) {
+      setSubjectNameInput(parsed.subjectName);
+    } else if (!subjectNameInput) {
+      setSubjectNameInput(
+        (parsed.className || classNameInput).toLowerCase().includes('cs')
+          ? 'Computer Science'
+          : 'Artificial Intelligence'
+      );
+    }
+
+    if (parsed.unitName) {
+      setUnitNameInput(parsed.unitName);
+    } else if (!unitNameInput) {
+      setUnitNameInput(`Unit 1: Introduction to ${subjectNameInput || 'AI'}`);
+    }
+
     if (parsed.title) {
       setTitle(parsed.title);
     } else if (!title) {
@@ -141,55 +140,6 @@ export default function FileUploadModal({
     const type = detectFileType(chosenFile.name, chosenFile.type);
     setDetectedType(type);
     sounds.pop();
-  };
-
-  const handleAutoCreateOrUpdateFromFilename = async () => {
-    if (!file) return;
-    setAutoCreating(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/classes/from-filename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to auto-configure class.');
-
-      sounds.fanfare();
-      fireConfetti();
-
-      // Notify parent to refresh classes
-      onUploadSuccess();
-
-      if (data.class) {
-        setSelectedClassId(data.class.id);
-
-        // Load and select the subject
-        const subRes = await fetch(`/api/subjects?class_id=${data.class.id}`);
-        const subData = await subRes.json();
-        setSubjects(subData.subjects || []);
-
-        if (data.subject) {
-          setSelectedSubjectId(data.subject.id);
-
-          // Load and select the unit
-          const unitRes = await fetch(`/api/units?subject_id=${data.subject.id}`);
-          const unitData = await unitRes.json();
-          setUnits(unitData.units || []);
-
-          if (data.unit) {
-            setSelectedUnitId(data.unit.id);
-          }
-        }
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to auto-configure class from filename.');
-    } finally {
-      setAutoCreating(false);
-    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -216,31 +166,54 @@ export default function FileUploadModal({
     setError('');
 
     if (!file) {
-      setError('Please choose or drop a file to upload.');
+      setError('Please choose or drop an attachment to publish.');
+      sounds.pop();
       return;
     }
+
+    const finalClassName = (classNameInput.trim() || parsedInfo?.className || 'X A AI').trim();
+    const finalSubjectName = (
+      subjectNameInput.trim() ||
+      parsedInfo?.subjectName ||
+      (finalClassName.toLowerCase().includes('cs') ? 'Computer Science' : 'Artificial Intelligence')
+    ).trim();
+    const finalUnitName = (
+      unitNameInput.trim() ||
+      parsedInfo?.unitName ||
+      `Unit 1: Introduction to ${finalSubjectName}`
+    ).trim();
+    const finalTitle = (
+      title.trim() ||
+      parsedInfo?.title ||
+      file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
+    ).trim();
 
     setLoading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      if (selectedUnitId) {
-        formData.append('unit_id', selectedUnitId);
-      } else {
-        // Auto-create/update class, subject, unit from file information
-        formData.append('auto_create_class', 'true');
-      }
-      formData.append('title', (title || file.name.replace(/\.[^/.]+$/, '')).trim());
+      formData.append('class_name', finalClassName);
+      formData.append('subject_name', finalSubjectName);
+      formData.append('unit_name', finalUnitName);
+      formData.append('title', finalTitle);
       formData.append('description', description.trim());
+
+      // Forward authorization token if available
+      const token = typeof window !== 'undefined' ? localStorage.getItem('portal_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
       const res = await fetch('/api/resources', {
         method: 'POST',
+        headers,
         body: formData,
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to upload file.');
+        throw new Error(data.error || `Upload failed with HTTP ${res.status}`);
       }
 
       sounds.fanfare();
@@ -248,7 +221,9 @@ export default function FileUploadModal({
       onUploadSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'An error occurred during upload.');
+      console.error('Publish to class library error:', err);
+      sounds.pop();
+      setError(err.message || 'Failed to publish to Class Library. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -262,13 +237,13 @@ export default function FileUploadModal({
         {/* Header */}
         <div className="bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-600 text-white px-6 py-4 flex items-center justify-between shadow-md">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-xl">
-              📤
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-xl shadow-inner">
+              🚀
             </div>
             <div>
-              <h2 className="text-xl font-bold font-display leading-tight">Upload Learning Resource</h2>
+              <h2 className="text-xl font-bold font-display leading-tight">Publish to Class Library</h2>
               <p className="text-xs text-sky-100 font-medium">
-                Organize or auto-create Class &rarr; Subject &rarr; Unit from file name
+                Type Class, Subject &amp; Unit to publish — auto-creates any missing section on the fly!
               </p>
             </div>
           </div>
@@ -292,47 +267,10 @@ export default function FileUploadModal({
             </div>
           )}
 
-          {/* Smart Auto-Detection Banner */}
-          {parsedInfo && (
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-3xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-pop">
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-xs font-black text-amber-900">
-                  <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
-                  <span>Detected from File Information:</span>
-                </div>
-                <div className="text-[11px] font-bold text-slate-700 flex flex-wrap gap-2 pt-0.5">
-                  <span className="bg-white px-2.5 py-0.5 rounded-lg border border-amber-200 shadow-2xs">
-                    Class: <strong className="text-sky-700">{parsedInfo.className || 'Grade 1'}</strong>
-                  </span>
-                  {parsedInfo.subjectName && (
-                    <span className="bg-white px-2.5 py-0.5 rounded-lg border border-amber-200 shadow-2xs">
-                      Subject: <strong className="text-purple-700">{parsedInfo.subjectName}</strong>
-                    </span>
-                  )}
-                  {parsedInfo.unitName && (
-                    <span className="bg-white px-2.5 py-0.5 rounded-lg border border-amber-200 shadow-2xs">
-                      Unit: <strong className="text-amber-800">{parsedInfo.unitName}</strong>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAutoCreateOrUpdateFromFilename}
-                disabled={autoCreating}
-                className="btn-bouncy px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-amber-950 font-black text-xs shadow-pop-yellow whitespace-nowrap flex items-center gap-1.5 self-end sm:self-center"
-              >
-                <Wand2 className="w-3.5 h-3.5 text-amber-900" />
-                <span>{autoCreating ? 'Configuring...' : 'Auto-Create / Select Class'}</span>
-              </button>
-            </div>
-          )}
-
-          {/* Drag & Drop File Picker */}
+          {/* 1. File Attachment Dropzone */}
           <div>
-            <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
-              1. Choose File (Auto-detects Class &amp; Format)
+            <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <span>📎</span> 1. File Attachment <span className="text-rose-500">*</span>
             </label>
 
             <div
@@ -341,11 +279,11 @@ export default function FileUploadModal({
               onDragOver={handleDrag}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-3 border-dashed rounded-3xl p-6 text-center cursor-pointer transition-all ${
+              className={`border-3 border-dashed rounded-3xl p-5 text-center cursor-pointer transition-all ${
                 dragActive
                   ? 'border-sky-500 bg-sky-50 scale-[1.01]'
                   : file
-                  ? 'border-emerald-300 bg-emerald-50/50'
+                  ? 'border-emerald-300 bg-emerald-50/50 shadow-xs'
                   : 'border-slate-300 hover:border-sky-400 bg-slate-50/70 hover:bg-sky-50/30'
               }`}
             >
@@ -362,7 +300,7 @@ export default function FileUploadModal({
 
               {file ? (
                 <div className="flex flex-col items-center">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl mb-2">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl mb-2 shadow-inner">
                     {typeInfo ? typeInfo.emoji : '📄'}
                   </div>
                   <div className="text-sm font-extrabold text-slate-800 break-all max-w-sm">
@@ -373,7 +311,7 @@ export default function FileUploadModal({
                   </div>
 
                   {typeInfo && (
-                    <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border bg-white shadow-sm">
+                    <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border bg-white shadow-xs">
                       <span>Detected:</span>
                       <span className={`px-2 py-0.5 rounded-full ${typeInfo.badgeBg} ${typeInfo.badgeColor}`}>
                         {typeInfo.emoji} {typeInfo.label}
@@ -381,133 +319,214 @@ export default function FileUploadModal({
                     </div>
                   )}
 
-                  <span className="text-[11px] text-sky-600 font-bold mt-3 hover:underline">
-                    Click to change file
+                  <span className="text-[11px] text-sky-600 font-bold mt-2 hover:underline">
+                    Click to change attachment
                   </span>
                 </div>
               ) : (
-                <div className="flex flex-col items-center py-2">
-                  <div className="w-14 h-14 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-3xl mb-3 shadow-inner">
+                <div className="flex flex-col items-center py-3">
+                  <div className="w-12 h-12 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center text-2xl mb-2 shadow-inner">
                     📁
                   </div>
-                  <p className="text-sm font-extrabold text-slate-700 mb-1">
-                    Drag &amp; drop your file here, or{' '}
-                    <span className="text-sky-600 underline">browse</span>
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-700 mb-0.5">
+                    Drag &amp; drop file here, or <span className="text-sky-600 underline">browse</span>
                   </p>
-                  <p className="text-xs text-slate-400 font-medium max-w-md">
-                    Files named like <code>Grade 1 - Science - Solar System.pdf</code> automatically configure their class!
+                  <p className="text-[11px] text-slate-400 font-medium max-w-md">
+                    Supports PDFs, HTML5 interactive apps/zips, videos, audio, images, PPTX, and DOCX
                   </p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Cascading Selectors */}
-          <div className="bg-sky-50/70 p-4 rounded-3xl border-2 border-sky-200 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
-                <FolderPlus className="w-4 h-4 text-sky-600" />
-                2. Hierarchical Assignment
+          {/* 2. Hierarchical Categorization (Type freely or click preset) */}
+          <div className="bg-slate-50/80 p-4 sm:p-5 rounded-3xl border-2 border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-sky-600" />
+                2. Categorize &amp; Auto-Organize Hierarchy
               </span>
-              <span className="text-[11px] font-bold text-sky-600">
-                {selectedClassId ? 'Class Selected' : 'Auto-resolves on upload'}
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                ⚡ Auto-creates if not found
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Class Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Class / Grade</label>
-                <select
-                  value={selectedClassId}
-                  onChange={(e) => {
-                    setSelectedClassId(e.target.value);
-                    sounds.pop();
-                  }}
-                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none"
-                >
-                  <option value="">Auto from filename...</option>
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.icon || '🎒'} {c.name}
-                    </option>
-                  ))}
-                </select>
+            {/* Class & Section Input */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <School className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Class &amp; Section</span>
+                  <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">Type freely or choose preset</span>
               </div>
 
-              {/* Subject Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Subject</label>
-                <select
-                  value={selectedSubjectId}
-                  onChange={(e) => {
-                    setSelectedSubjectId(e.target.value);
-                    sounds.pop();
-                  }}
-                  disabled={!selectedClassId || subjects.length === 0}
-                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="">
-                    {subjects.length === 0 ? 'Auto from filename...' : 'Select Subject...'}
-                  </option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.icon || '📚'} {s.name}
-                    </option>
-                  ))}
-                </select>
+              <input
+                list="class-suggestions"
+                type="text"
+                value={classNameInput}
+                onChange={(e) => setClassNameInput(e.target.value)}
+                placeholder="e.g. X A AI, XI CS, XII AI, Grade 5..."
+                className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none"
+              />
+              <datalist id="class-suggestions">
+                {classes.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+                {STANDARD_CLASS_PRESETS.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+
+              {/* Quick Class Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+                <span className="text-[10px] font-bold text-slate-400">Presets:</span>
+                {STANDARD_CLASS_PRESETS.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      sounds.pop();
+                      setClassNameInput(p);
+                      if (!subjectNameInput) {
+                        setSubjectNameInput(p.includes('CS') ? 'Computer Science' : 'Artificial Intelligence');
+                      }
+                    }}
+                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg border transition-all ${
+                      classNameInput.toLowerCase() === p.toLowerCase()
+                        ? 'bg-sky-500 text-white border-sky-600 shadow-xs'
+                        : 'bg-white hover:bg-sky-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Subject Input */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <BookOpen className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Subject</span>
+                  <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">Type freely or choose preset</span>
               </div>
 
-              {/* Unit Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Unit / Chapter</label>
-                <select
-                  value={selectedUnitId}
-                  onChange={(e) => {
-                    setSelectedUnitId(e.target.value);
-                    sounds.pop();
-                  }}
-                  disabled={!selectedSubjectId || units.length === 0}
-                  className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="">
-                    {units.length === 0 ? 'Auto from filename...' : 'Select Unit...'}
-                  </option>
-                  {units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      📖 {u.name}
-                    </option>
-                  ))}
-                </select>
+              <input
+                list="subject-suggestions"
+                type="text"
+                value={subjectNameInput}
+                onChange={(e) => setSubjectNameInput(e.target.value)}
+                placeholder="e.g. Artificial Intelligence, Computer Science, Science..."
+                className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-purple-500 focus:outline-none"
+              />
+              <datalist id="subject-suggestions">
+                {STANDARD_SUBJECT_PRESETS.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+
+              {/* Quick Subject Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+                <span className="text-[10px] font-bold text-slate-400">Presets:</span>
+                {STANDARD_SUBJECT_PRESETS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      sounds.pop();
+                      setSubjectNameInput(s);
+                    }}
+                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg border transition-all ${
+                      subjectNameInput.toLowerCase() === s.toLowerCase()
+                        ? 'bg-purple-600 text-white border-purple-700 shadow-xs'
+                        : 'bg-white hover:bg-purple-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Unit / Topic Name Input */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <Folder className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Unit / Topic Name</span>
+                  <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">Type freely to group files</span>
+              </div>
+
+              <input
+                list="unit-suggestions"
+                type="text"
+                value={unitNameInput}
+                onChange={(e) => setUnitNameInput(e.target.value)}
+                placeholder="e.g. Unit 1 Introduction to AI, Unit 2 Python Basics..."
+                className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-amber-500 focus:outline-none"
+              />
+              <datalist id="unit-suggestions">
+                {STANDARD_UNIT_PRESETS.map((u) => (
+                  <option key={u} value={u} />
+                ))}
+              </datalist>
+
+              {/* Quick Unit Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
+                <span className="text-[10px] font-bold text-slate-400">Presets:</span>
+                {STANDARD_UNIT_PRESETS.map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => {
+                      sounds.pop();
+                      setUnitNameInput(u);
+                    }}
+                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg border transition-all ${
+                      unitNameInput.toLowerCase() === u.toLowerCase()
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                        : 'bg-white hover:bg-amber-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {u}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* Title & Description */}
+          {/* 3. Title & Description */}
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Resource Title
+                Resource Title <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Planets of our Solar System Activity"
-                className="w-full text-sm font-bold bg-white border-2 border-slate-200 rounded-2xl px-4 py-2.5 focus:border-sky-500 focus:outline-none placeholder:font-normal placeholder:text-slate-400"
+                placeholder="e.g. Introduction to Neural Networks Overview"
+                className="w-full text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-3 py-2.5 focus:border-sky-500 focus:outline-none"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Fun Short Description / Teacher Note <span className="text-slate-400">(Optional)</span>
+                Teacher Note / Short Description <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <textarea
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Listen carefully to the story and color the worksheet planets!"
-                className="w-full text-xs font-medium bg-white border-2 border-slate-200 rounded-2xl px-4 py-2 focus:border-sky-500 focus:outline-none placeholder:text-slate-400"
+                placeholder="e.g. Read through slides 1-10 before beginning the worksheet."
+                className="w-full text-xs font-medium bg-white border-2 border-slate-200 rounded-xl px-3 py-2 focus:border-sky-500 focus:outline-none placeholder:text-slate-400"
               />
             </div>
           </div>
@@ -517,14 +536,17 @@ export default function FileUploadModal({
             <button
               type="submit"
               disabled={loading || !file}
-              className="btn-bouncy w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-extrabold text-sm shadow-pop-blue flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-bouncy w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-600 hover:to-indigo-700 text-white font-black text-sm shadow-pop-blue flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {loading ? (
-                <span>Publishing &amp; Auto-Organizing...</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Publishing &amp; Auto-Organizing to Class Library...</span>
+                </div>
               ) : (
                 <>
-                  <Upload className="w-5 h-5" />
-                  <span>Publish to Class Library</span>
+                  <Upload className="w-5 h-5 text-white" />
+                  <span>Publish to Class Library 🚀</span>
                 </>
               )}
             </button>
