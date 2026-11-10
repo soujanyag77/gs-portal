@@ -48,6 +48,15 @@ export interface UnitItem {
 
 export type FileType = 'pdf' | 'html' | 'image' | 'audio' | 'video' | 'document' | 'other';
 
+export interface UploadedFile {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
+  created_at: string;
+}
+
 export interface ResourceItem {
   id: string;
   unit_id: string;

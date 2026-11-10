@@ -2,28 +2,32 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   Sparkles,
-  Gamepad2,
+  Cloud,
+  Database,
+  HardDrive,
   FileText,
-  Video,
-  BarChart2,
   ShieldCheck,
-  Star,
-  ChevronRight,
   School,
   ArrowRight,
+  ExternalLink,
+  Layers,
+  CheckCircle2,
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
+import FileUpload from '@/components/FileUpload';
+import FileList from '@/components/FileList';
+import { UploadedFile, User } from '@/lib/types';
+import { formatBytes } from '@/lib/download-utils';
 import { sounds } from '@/components/sound-effects';
-import { fireConfetti } from '@/components/ConfettiCelebration';
-import { User } from '@/lib/types';
 
 export default function HomePage() {
-  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
+  // Check auth user
   useEffect(() => {
     async function checkUser() {
       try {
@@ -39,156 +43,163 @@ export default function HomePage() {
     checkUser();
   }, []);
 
-  const handleStudentClick = () => {
-    sounds.fanfare();
-    fireConfetti();
-    if (currentUser?.role === 'student') {
-      router.push('/student/portal');
-    } else {
-      router.push('/student/login');
+  // Load uploaded files from /api/files
+  async function loadFiles() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/files');
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(data.files || []);
+      }
+    } catch (err) {
+      console.error('Failed to load files:', err);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    loadFiles();
+  }, []);
+
+  const handleUploadSuccess = (newFile: UploadedFile) => {
+    setFiles((prev) => [newFile, ...prev]);
   };
 
-  const handleTeacherClick = () => {
-    sounds.pop();
-    if (currentUser?.role === 'teacher') {
-      router.push('/teacher/dashboard');
-    } else {
-      router.push('/teacher/login');
-    }
+  const handleFileDeleted = (id: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== id));
   };
+
+  // Compute metrics
+  const totalFiles = files.length;
+  const totalBytes = files.reduce((acc, f) => acc + (f.file_size || 0), 0);
+  const uniqueMimeTypes = new Set(files.map((f) => f.mime_type)).size;
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-sky-50 via-white to-amber-50 bg-polka">
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-sky-50 via-white to-amber-50/50 bg-polka">
       <Navbar user={currentUser} />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16 flex flex-col items-center justify-center text-center">
-        {/* Welcome Pill */}
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border-2 border-amber-300 shadow-sm text-amber-900 text-xs sm:text-sm font-extrabold mb-6 animate-float">
-          <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
-          <span>Welcome to the Wonder Academy Learning Portal!</span>
-          <span className="text-xl">🌟</span>
-        </div>
-
-        {/* Main Title */}
-        <h1 className="text-4xl sm:text-6xl font-black font-display text-slate-800 tracking-tight leading-tight max-w-4xl mb-4">
-          Where Learning Meets <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 via-purple-500 to-pink-500">Play &amp; Wonder</span>!
-        </h1>
-
-        <p className="text-base sm:text-xl text-slate-600 max-w-2xl font-medium mb-12 leading-relaxed">
-          Explore interactive simulations, flip through picture books, watch science discoveries, and practice worksheets tailored class-by-class.
-        </p>
-
-        {/* Dual Giant Role Portals */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mb-16">
-          {/* Student Portal Card */}
-          <div
-            onClick={handleStudentClick}
-            className="group relative bg-white rounded-4xl p-8 border-4 border-amber-300 hover:border-amber-400 shadow-bouncy hover:shadow-2xl transition-all cursor-pointer text-left flex flex-col justify-between overflow-hidden transform hover:-translate-y-1.5"
-          >
-            <div className="absolute top-0 right-0 w-36 h-36 bg-amber-100 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" />
-
-            <div className="relative z-10">
-              <div className="w-16 h-16 rounded-3xl bg-amber-400 text-white flex items-center justify-center text-3xl shadow-pop-yellow mb-6 transform group-hover:rotate-6 transition-transform">
-                🚀
-              </div>
-
-              <div className="inline-block px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-black uppercase tracking-wider mb-2 border border-amber-300">
-                For Kids &amp; Students
-              </div>
-
-              <h2 className="text-3xl font-black font-display text-slate-800 mb-2 group-hover:text-amber-600 transition-colors">
-                I am a Student!
-              </h2>
-
-              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6">
-                Pick your classroom, enter your cute animal PIN, and discover worksheets, games, videos, and reading materials!
-              </p>
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+        {/* Top Hero Banner */}
+        <div className="bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 rounded-4xl p-6 sm:p-10 text-white shadow-bouncy relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="relative z-10 space-y-3 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/30">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Supabase Storage &amp; Next.js App Router</span>
             </div>
 
-            <div className="relative z-10 pt-4 border-t border-slate-100 flex items-center justify-between">
-              <span className="font-extrabold text-amber-700 text-sm group-hover:translate-x-1 transition-transform flex items-center gap-1.5">
-                <span>Start Learning Adventure</span>
-                <ArrowRight className="w-4 h-4" />
+            <h1 className="text-3xl sm:text-5xl font-black font-display tracking-tight leading-tight">
+              Modern File Management Portal
+            </h1>
+
+            <p className="text-xs sm:text-sm text-sky-100 font-medium leading-relaxed">
+              Upload any file type without restriction. Open and inspect files in a new browser tab with native MIME rendering (PDFs, HTML5 apps, media, and code), and download with exact original names and extensions.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-white/15 px-3 py-1 rounded-xl border border-white/20">
+                <Cloud className="w-3.5 h-3.5 text-sky-200" />
+                <span>Bucket: <strong className="text-white">portal-files</strong></span>
               </span>
-              <span className="text-2xl">🦁</span>
-            </div>
-          </div>
 
-          {/* Teacher Portal Card */}
-          <div
-            onClick={handleTeacherClick}
-            className="group relative bg-white rounded-4xl p-8 border-4 border-sky-300 hover:border-sky-400 shadow-bouncy hover:shadow-2xl transition-all cursor-pointer text-left flex flex-col justify-between overflow-hidden transform hover:-translate-y-1.5"
-          >
-            <div className="absolute top-0 right-0 w-36 h-36 bg-sky-100 rounded-bl-full -z-0 opacity-50 group-hover:scale-110 transition-transform" />
-
-            <div className="relative z-10">
-              <div className="w-16 h-16 rounded-3xl bg-sky-500 text-white flex items-center justify-center text-3xl shadow-pop-blue mb-6 transform group-hover:-rotate-6 transition-transform">
-                👩‍🏫
-              </div>
-
-              <div className="inline-block px-3 py-1 rounded-full bg-sky-100 text-sky-900 text-xs font-black uppercase tracking-wider mb-2 border border-sky-300">
-                For Teachers &amp; Educators
-              </div>
-
-              <h2 className="text-3xl font-black font-display text-slate-800 mb-2 group-hover:text-sky-600 transition-colors">
-                I am a Teacher!
-              </h2>
-
-              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6">
-                Manage curriculum with cascading tags (Class &rarr; Subject &rarr; Unit), upload materials, and inspect real-time student activity logs.
-              </p>
-            </div>
-
-            <div className="relative z-10 pt-4 border-t border-slate-100 flex items-center justify-between">
-              <span className="font-extrabold text-sky-700 text-sm group-hover:translate-x-1 transition-transform flex items-center gap-1.5">
-                <span>Open Educator Dashboard</span>
-                <ArrowRight className="w-4 h-4" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-white/15 px-3 py-1 rounded-xl border border-white/20">
+                <Database className="w-3.5 h-3.5 text-purple-200" />
+                <span>Table: <strong className="text-white">uploaded_files</strong></span>
               </span>
-              <span className="text-2xl">📊</span>
+            </div>
+          </div>
+
+          {/* Quick Classroom Portal Navigation link */}
+          <div className="relative z-10 flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-auto">
+            <Link
+              href="/student/portal"
+              onClick={() => sounds.fanfare()}
+              className="btn-bouncy px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-xs sm:text-sm shadow-pop-yellow flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              <span>🎒 Student Learning Portal</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+
+            <Link
+              href="/teacher/dashboard"
+              onClick={() => sounds.pop()}
+              className="btn-bouncy px-5 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-black text-xs sm:text-sm backdrop-blur-md border border-white/30 flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              <span>👩‍🏫 Educator Dashboard</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Metric Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center text-2xl shadow-inner">
+              📁
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Files</p>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-800 font-display">{totalFiles}</h3>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl shadow-inner">
+              💾
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Storage Used</p>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-800 font-display">{formatBytes(totalBytes)}</h3>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center text-2xl shadow-inner">
+              🧬
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">MIME Types</p>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-800 font-display">{uniqueMimeTypes} Types</h3>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl shadow-inner">
+              🛡️
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">MIME Delivery</p>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-800 font-display">Inline / Direct</h3>
             </div>
           </div>
         </div>
 
-        {/* Feature Badges Grid */}
-        <div className="w-full max-w-4xl grid grid-cols-2 sm:grid-cols-4 gap-4 text-left">
-          <div className="p-4 bg-white/80 rounded-3xl border-2 border-slate-100 shadow-sm flex items-center gap-3">
-            <span className="text-2xl">📄</span>
-            <div>
-              <div className="text-xs font-black text-slate-800">PDF Reader</div>
-              <div className="text-[11px] text-slate-500">Kid-safe preview</div>
-            </div>
-          </div>
+        {/* 1. File Upload Zone */}
+        <FileUpload onUploadSuccess={handleUploadSuccess} />
 
-          <div className="p-4 bg-white/80 rounded-3xl border-2 border-slate-100 shadow-sm flex items-center gap-3">
-            <span className="text-2xl">🎮</span>
-            <div>
-              <div className="text-xs font-black text-slate-800">HTML5 Games</div>
-              <div className="text-[11px] text-slate-500">Sandboxed frame</div>
-            </div>
-          </div>
-
-          <div className="p-4 bg-white/80 rounded-3xl border-2 border-slate-100 shadow-sm flex items-center gap-3">
-            <span className="text-2xl">🎬</span>
-            <div>
-              <div className="text-xs font-black text-slate-800">Media Lessons</div>
-              <div className="text-[11px] text-slate-500">Audio &amp; video</div>
-            </div>
-          </div>
-
-          <div className="p-4 bg-white/80 rounded-3xl border-2 border-slate-100 shadow-sm flex items-center gap-3">
-            <span className="text-2xl">📈</span>
-            <div>
-              <div className="text-xs font-black text-slate-800">Live Analytics</div>
-              <div className="text-[11px] text-slate-500">Real-time tracker</div>
-            </div>
-          </div>
-        </div>
+        {/* 2. File Explorer & Table View */}
+        <FileList
+          files={files}
+          loading={loading}
+          onFileDeleted={handleFileDeleted}
+          onRefresh={loadFiles}
+        />
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white/70 py-6 text-center text-xs text-slate-400 font-medium">
-        <p>GS Portal &bull; Kid-Friendly Educational File &amp; Resource Hub &bull; Built with Next.js &amp; SQLite</p>
+      <footer className="border-t border-slate-200 bg-white py-6 mt-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-semibold text-slate-400">
+          <div className="flex items-center gap-2">
+            <span>🎒 GS Portal &bull; Supabase Storage + Database</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-emerald-600 flex items-center gap-1 font-bold">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Storage Connected
+            </span>
+            <span>RLS Active</span>
+          </div>
+        </div>
       </footer>
     </div>
   );

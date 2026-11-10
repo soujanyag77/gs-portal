@@ -7,6 +7,7 @@ import {
   SubjectItem,
   UnitItem,
   ResourceItem,
+  UploadedFile,
   AccessLogItem,
   AnalyticsSummary,
   FileType,
@@ -133,6 +134,15 @@ function initSchema(db: DatabaseSync) {
       unit_name TEXT,
       action_type TEXT NOT NULL CHECK(action_type IN ('view', 'download', 'interact', 'complete')),
       accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS uploaded_files (
+      id TEXT PRIMARY KEY,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      mime_type TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 }
@@ -1131,3 +1141,69 @@ export function getAnalyticsSummary(classId?: string): AnalyticsSummary {
     recentActivity,
   };
 }
+
+// ---------------- UPLOADED FILES OPERATIONS ----------------
+
+export function getUploadedFiles(): UploadedFile[] {
+  const db = getDb();
+  try {
+    const rows = db.prepare('SELECT * FROM uploaded_files ORDER BY created_at DESC').all();
+    return rows.map((r: any) => ({
+      id: r.id,
+      file_name: r.file_name,
+      file_path: r.file_path,
+      file_size: Number(r.file_size),
+      mime_type: r.mime_type,
+      created_at: r.created_at,
+    }));
+  } catch (err) {
+    console.error('getUploadedFiles error:', err);
+    return [];
+  }
+}
+
+export function getUploadedFileById(id: string): UploadedFile | null {
+  const db = getDb();
+  try {
+    const row = db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      file_name: row.file_name,
+      file_path: row.file_path,
+      file_size: Number(row.file_size),
+      mime_type: row.mime_type,
+      created_at: row.created_at,
+    };
+  } catch (err) {
+    console.error('getUploadedFileById error:', err);
+    return null;
+  }
+}
+
+export function insertUploadedFile(file: UploadedFile): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO uploaded_files (id, file_name, file_path, file_size, mime_type, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    file.id,
+    file.file_name,
+    file.file_path,
+    file.file_size,
+    file.mime_type,
+    file.created_at || new Date().toISOString()
+  );
+}
+
+export function deleteUploadedFile(id: string): boolean {
+  const db = getDb();
+  try {
+    const res = db.prepare('DELETE FROM uploaded_files WHERE id = ?').run(id);
+    return res.changes > 0;
+  } catch (err) {
+    console.error('deleteUploadedFile error:', err);
+    return false;
+  }
+}
+
