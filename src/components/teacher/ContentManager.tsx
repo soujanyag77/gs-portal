@@ -17,19 +17,35 @@ import {
   Download,
   Check,
   ExternalLink,
+  LayoutGrid,
+  List,
+  RefreshCw,
+  FileText,
+  FileSpreadsheet,
+  FileCode,
+  FileImage,
+  FileAudio,
+  FileVideo,
+  FileArchive,
+  File,
+  Layers,
+  Calendar,
+  HardDrive,
 } from 'lucide-react';
 import { ClassItem, SubjectItem, UnitItem, ResourceItem, FileType } from '@/lib/types';
-import { FILE_TYPE_MAP, formatFileSize } from '@/lib/file-types';
+import {
+  downloadFile,
+  getFileCategoryMeta,
+  formatBytes,
+  formatUploadDate,
+  FileCategory,
+} from '@/lib/download-utils';
 import EmptyState from '../EmptyState';
 import FileUploadModal from './FileUploadModal';
 import ClassManagerModal from './ClassManagerModal';
 import SubjectModal from './SubjectModal';
 import UnitModal from './UnitModal';
-import PdfViewerModal from '../student/PdfViewerModal';
-import HtmlInteractiveModal from '../student/HtmlInteractiveModal';
-import MediaViewerModal from '../student/MediaViewerModal';
-import ImageLightboxModal from '../student/ImageLightboxModal';
-import DocumentCardModal from '../student/DocumentCardModal';
+import FilePreviewModal from './FilePreviewModal';
 import { sounds } from '../sound-effects';
 
 export default function ContentManager() {
@@ -37,6 +53,9 @@ export default function ContentManager() {
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [units, setUnits] = useState<UnitItem[]>([]);
   const [resources, setResources] = useState<ResourceItem[]>([]);
+
+  // View mode: Table vs Cards
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
   // Cascading Filter Selection
   const [filterClassId, setFilterClassId] = useState<string>('');
@@ -46,6 +65,10 @@ export default function ContentManager() {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Download feedback states
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadSuccessId, setDownloadSuccessId] = useState<string | null>(null);
 
   // Modals state
   const [isUploadOpen, setIsUploadOpen] = useState<boolean>(false);
@@ -58,7 +81,7 @@ export default function ContentManager() {
   const [editTitle, setEditTitle] = useState<string>('');
   const [editDesc, setEditDesc] = useState<string>('');
 
-  // Preview Resource modal state
+  // Comprehensive File Preview modal state
   const [previewResource, setPreviewResource] = useState<ResourceItem | null>(null);
 
   // Load Classes
@@ -71,7 +94,7 @@ export default function ContentManager() {
         setFilterClassId(data.classes[0].id);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load classes:', err);
     }
   }
 
@@ -86,7 +109,7 @@ export default function ContentManager() {
       const data = await res.json();
       setSubjects(data.subjects || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load subjects:', err);
     }
   }
 
@@ -101,7 +124,7 @@ export default function ContentManager() {
       const data = await res.json();
       setUnits(data.units || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load units:', err);
     }
   }
 
@@ -120,7 +143,7 @@ export default function ContentManager() {
       const data = await res.json();
       setResources(data.resources || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load resources:', err);
     } finally {
       setLoading(false);
     }
@@ -159,7 +182,7 @@ export default function ContentManager() {
       loadResources();
       loadClasses();
     } catch (err) {
-      console.error(err);
+      console.error('Failed to delete resource:', err);
     }
   };
 
@@ -178,7 +201,7 @@ export default function ContentManager() {
       setEditingResource(null);
       loadResources();
     } catch (err) {
-      console.error(err);
+      console.error('Failed to edit resource:', err);
     }
   };
 
@@ -192,38 +215,46 @@ export default function ContentManager() {
       return;
     }
 
-    if (resource.file_type === 'pdf') {
-      window.open(fileUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
-
-    if (['audio', 'video', 'image'].includes(resource.file_type)) {
-      window.open(fileUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
-
-    if (resource.file_type === 'document' || resource.file_name?.match(/\.(docx?|pptx?|xlsx?)$/i)) {
-      if (fileUrl.startsWith('http')) {
-        window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=false`, '_blank', 'noopener,noreferrer');
-      } else {
-        window.open(fileUrl, '_blank', 'noopener,noreferrer');
-      }
-      return;
-    }
-
     window.open(fileUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const handleDownloadFile = (resource: ResourceItem) => {
+  const handleDownloadFile = async (resource: ResourceItem) => {
     sounds.star();
-    const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
-    const downloadUrl = fileUrl.includes('?') ? `${fileUrl}&download=1` : `${fileUrl}?download=1`;
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = resource.file_name || 'download';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setDownloadingId(resource.id);
+    try {
+      const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+      const success = await downloadFile(fileUrl, resource.file_name);
+      if (success) {
+        setDownloadSuccessId(resource.id);
+        setTimeout(() => setDownloadSuccessId(null), 2500);
+      }
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const renderCategoryIcon = (category: FileCategory, className: string = 'w-4 h-4') => {
+    switch (category) {
+      case 'pdf':
+        return <FileText className={className} />;
+      case 'word':
+      case 'presentation':
+        return <FileText className={className} />;
+      case 'sheet':
+        return <FileSpreadsheet className={className} />;
+      case 'code':
+        return <FileCode className={className} />;
+      case 'image':
+        return <FileImage className={className} />;
+      case 'audio':
+        return <FileAudio className={className} />;
+      case 'video':
+        return <FileVideo className={className} />;
+      case 'archive':
+        return <FileArchive className={className} />;
+      default:
+        return <File className={className} />;
+    }
   };
 
   const classesUploadsSum = classes.reduce((sum, c) => sum + (c.resource_count || 0), 0);
@@ -239,7 +270,7 @@ export default function ContentManager() {
             <h2 className="text-2xl font-bold font-display">Curriculum & Content Manager</h2>
           </div>
           <p className="text-xs text-sky-100 max-w-xl font-medium">
-            Manage your Grade classrooms, Subjects, Units, and upload kid-friendly learning resources (PDFs, HTML5 interactive games, audio stories, video lessons, and worksheets).
+            Manage your Classrooms, Subjects, Units, and inspect, preview, and download all uploaded learning resources (PDFs, HTML5 simulations, worksheets, media, and code).
           </p>
         </div>
 
@@ -260,10 +291,10 @@ export default function ContentManager() {
               sounds.pop();
               setIsClassModalOpen(true);
             }}
-            className="btn-bouncy px-4 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs flex items-center gap-1.5"
+            className="btn-bouncy px-4 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs flex items-center gap-1.5 backdrop-blur-sm"
           >
             <School className="w-4 h-4" />
-            <span>Class & Students</span>
+            <span>Classes</span>
           </button>
 
           <button
@@ -271,10 +302,10 @@ export default function ContentManager() {
               sounds.pop();
               setIsSubjectModalOpen(true);
             }}
-            className="btn-bouncy px-4 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs flex items-center gap-1.5"
+            className="btn-bouncy px-4 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs flex items-center gap-1.5 backdrop-blur-sm"
           >
             <BookOpen className="w-4 h-4" />
-            <span>+ Subject</span>
+            <span>Subjects</span>
           </button>
 
           <button
@@ -282,78 +313,64 @@ export default function ContentManager() {
               sounds.pop();
               setIsUnitModalOpen(true);
             }}
-            className="btn-bouncy px-4 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs flex items-center gap-1.5"
+            className="btn-bouncy px-4 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-extrabold text-xs flex items-center gap-1.5 backdrop-blur-sm"
           >
             <Folder className="w-4 h-4" />
-            <span>+ Unit</span>
+            <span>Units</span>
           </button>
-
-          <Link
-            href="/student/portal"
-            onClick={() => sounds.pop()}
-            className="btn-bouncy px-4 py-3 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-extrabold text-xs shadow-pop-green flex items-center gap-1.5 ml-auto sm:ml-0"
-            title="Preview learning portal as a student"
-          >
-            <Eye className="w-4 h-4" />
-            <span>Student View 👀</span>
-          </Link>
         </div>
       </div>
 
-      {/* Class-Wise Uploaded Files Overview Bar */}
-      <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm space-y-3.5">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-800 flex items-center justify-center text-lg shadow-inner">
-              📂
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-slate-800 font-display">
-                  Class-Wise Uploaded Materials
-                </h3>
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
-                  {totalUploadsCount} Total Uploads
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium">
-                Click any classroom card below to instantly view and manage its uploaded files
-              </p>
-            </div>
+      {/* Class Carousel Bar */}
+      <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase text-slate-400 tracking-wider">
+              Classrooms
+            </span>
+            <span className="text-xs text-slate-400 font-bold">
+              ({classes.length} classes available)
+            </span>
           </div>
 
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold text-slate-500 bg-sky-50 text-sky-800 px-3 py-1 rounded-full border border-sky-200">
+              📊 Class-Wise Uploaded Materials: <strong>{totalUploadsCount}</strong> Total Uploads
+            </span>
+            <button
+              onClick={() => {
+                sounds.pop();
+                setIsClassModalOpen(true);
+              }}
+              className="text-xs font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Class</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-thin">
           <button
             onClick={() => {
               sounds.pop();
               setFilterClassId('');
-              setFilterSubjectId('');
-              setFilterUnitId('');
             }}
-            className={`btn-bouncy px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-              !filterClassId
-                ? 'bg-sky-500 text-white shadow-sm ring-2 ring-sky-300'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+            className={`flex-shrink-0 px-4 py-2.5 rounded-2xl text-xs font-extrabold border-2 transition-all flex items-center gap-2 ${
+              filterClassId === ''
+                ? 'bg-sky-500 text-white border-sky-500 shadow-pop-blue'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
             }`}
           >
-            <span>🌟</span>
-            <span>All Classrooms ({totalUploadsCount} files)</span>
+            <span>🌐</span>
+            <span>All Classes</span>
+            <span className="bg-white/30 px-2 py-0.5 rounded-full text-[10px]">
+              {classesUploadsSum}
+            </span>
           </button>
-        </div>
 
-        {/* Classroom Cards Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {classes.map((cls) => {
-            const isSelected = filterClassId === cls.id;
-            const classResCount = resources.filter(
-              (r) =>
-                r.class_id === cls.id ||
-                (r.class_name && r.class_name.trim().toLowerCase() === cls.name.trim().toLowerCase())
-            ).length;
-            const fileCount = Math.max(
-              cls.resource_count || 0,
-              classResCount,
-              filterClassId === cls.id ? resources.length : 0
-            );
+            const isSelected = cls.id === filterClassId;
             return (
               <button
                 key={cls.id}
@@ -361,65 +378,85 @@ export default function ContentManager() {
                   sounds.pop();
                   setFilterClassId(cls.id);
                 }}
-                className={`p-3.5 rounded-2xl text-left border-2 transition-all flex flex-col justify-between group cursor-pointer ${
+                className={`flex-shrink-0 px-4 py-2.5 rounded-2xl text-xs font-extrabold border-2 transition-all flex items-center gap-2 ${
                   isSelected
-                    ? 'border-sky-500 bg-sky-50 shadow-bouncy ring-2 ring-sky-300 transform scale-102'
-                    : 'border-slate-100 hover:border-slate-300 bg-white hover:bg-slate-50/60 shadow-xs'
+                    ? 'bg-sky-500 text-white border-sky-500 shadow-pop-blue'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                <div className="flex items-start justify-between gap-1 mb-2">
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center text-xl shadow-inner group-hover:scale-110 transition-transform"
-                    style={{ backgroundColor: `${cls.color || '#38bdf8'}20` }}
-                  >
-                    {cls.icon || '🎒'}
-                  </div>
-                  <span
-                    className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                      fileCount > 0
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-100 text-slate-400'
-                    }`}
-                  >
-                    {fileCount} {fileCount === 1 ? 'file' : 'files'}
-                  </span>
-                </div>
-                <div>
-                  <div className="font-black text-xs text-slate-800 group-hover:text-sky-600 transition-colors line-clamp-1">
-                    {cls.name}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
-                    {cls.grade_level || 'Grade'}
-                  </div>
-                </div>
+                <span>{cls.icon || '🎒'}</span>
+                <span>{cls.name}</span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    isSelected ? 'bg-white/30 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {cls.resource_count ?? 0}
+                </span>
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Cascading Filters & Search Bar */}
+      {/* Cascading Filters, Search Bar & View Mode Toggle */}
       <div className="bg-white rounded-3xl p-5 border-2 border-slate-100 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-black uppercase text-slate-500 tracking-wider">
-              Cascading Filter:
+              Filter By:
             </span>
             <span className="text-xs text-slate-400 font-medium hidden sm:inline">
-              Class &rarr; Subject &rarr; Unit
+              Class &rarr; Subject &rarr; Unit &rarr; Format
             </span>
           </div>
 
-          {/* Search box */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search files or topics..."
-              className="w-full text-xs font-bold pl-9 pr-3 py-2 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-sky-500 focus:outline-none"
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Search box */}
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search files or topics..."
+                className="w-full text-xs font-bold pl-9 pr-3 py-2 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-sky-500 focus:outline-none"
+              />
+            </div>
+
+            {/* View Mode Toggle (Table vs Cards) */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
+              <button
+                onClick={() => {
+                  sounds.pop();
+                  setViewMode('table');
+                }}
+                className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  viewMode === 'table'
+                    ? 'bg-white text-sky-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Table List View"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden md:inline">Table</span>
+              </button>
+              <button
+                onClick={() => {
+                  sounds.pop();
+                  setViewMode('cards');
+                }}
+                className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  viewMode === 'cards'
+                    ? 'bg-white text-sky-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Grid Cards View"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden md:inline">Cards</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -500,21 +537,23 @@ export default function ContentManager() {
               <option value="all">All Formats</option>
               <option value="pdf">📄 PDFs</option>
               <option value="html">🎮 Interactive / Sim</option>
+              <option value="document">📝 Worksheets / Word</option>
               <option value="video">🎬 Videos</option>
               <option value="audio">🎵 Audio</option>
               <option value="image">🖼️ Pictures</option>
-              <option value="document">📝 Worksheets / Docs</option>
+              <option value="other">📦 Code &amp; Others</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* Resources Table / Grid */}
-      <div className="bg-white rounded-3xl p-6 border-2 border-slate-100 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      {/* Resources Table / Grid Card Container */}
+      <div className="bg-white rounded-3xl p-6 border-2 border-slate-100 shadow-sm space-y-4">
+        {/* Header row with count & active filter tags */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-100">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-bold font-display text-slate-800 flex items-center gap-2">
-              <span>Learning Resources</span>
+              <span>Uploaded Learning Files</span>
               <span className="bg-sky-100 text-sky-800 text-xs px-2.5 py-0.5 rounded-full font-extrabold">
                 {resources.length} {resources.length === 1 ? 'file' : 'files'}
               </span>
@@ -536,23 +575,88 @@ export default function ContentManager() {
                 </button>
               </span>
             )}
+
+            {filterSubjectId && (
+              <span className="text-xs font-black text-purple-800 bg-purple-100 px-3 py-1 rounded-full border border-purple-300 flex items-center gap-1.5 shadow-xs">
+                <span>Subject:</span>
+                <span>{subjects.find((s) => s.id === filterSubjectId)?.name || 'Filtered'}</span>
+                <button
+                  onClick={() => {
+                    sounds.pop();
+                    setFilterSubjectId('');
+                  }}
+                  className="hover:text-rose-600 font-black ml-1"
+                  title="Clear subject filter"
+                >
+                  &times;
+                </button>
+              </span>
+            )}
+
+            {filterUnitId && (
+              <span className="text-xs font-black text-amber-800 bg-amber-100 px-3 py-1 rounded-full border border-amber-300 flex items-center gap-1.5 shadow-xs">
+                <span>Unit:</span>
+                <span>{units.find((u) => u.id === filterUnitId)?.name || 'Filtered'}</span>
+                <button
+                  onClick={() => {
+                    sounds.pop();
+                    setFilterUnitId('');
+                  }}
+                  className="hover:text-rose-600 font-black ml-1"
+                  title="Clear unit filter"
+                >
+                  &times;
+                </button>
+              </span>
+            )}
           </div>
 
-          {classes.length === 0 && (
-            <span className="text-xs text-amber-700 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
-              ⚠️ Start by adding a Class first!
-            </span>
-          )}
+          <button
+            onClick={() => {
+              sounds.pop();
+              loadResources();
+            }}
+            className="text-xs font-bold text-slate-500 hover:text-sky-600 flex items-center gap-1"
+            title="Refresh list"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh</span>
+          </button>
         </div>
 
+        {/* Loading Skeleton */}
         {loading ? (
-          <div className="py-12 text-center text-slate-400 font-bold text-sm">
-            Loading materials...
-          </div>
+          viewMode === 'table' ? (
+            <div className="space-y-3 py-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center gap-4 p-3 bg-slate-50 rounded-2xl animate-pulse">
+                  <div className="w-10 h-10 bg-slate-200 rounded-xl" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-slate-200 rounded-md w-1/3" />
+                    <div className="h-3 bg-slate-100 rounded-md w-1/4" />
+                  </div>
+                  <div className="h-6 bg-slate-200 rounded-full w-24 hidden sm:block" />
+                  <div className="h-6 bg-slate-200 rounded-full w-20 hidden md:block" />
+                  <div className="h-8 bg-slate-200 rounded-xl w-32" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 py-4">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="bg-slate-50 rounded-3xl p-5 border border-slate-200 animate-pulse space-y-4">
+                  <div className="h-28 bg-slate-200 rounded-2xl w-full" />
+                  <div className="h-4 bg-slate-200 rounded-md w-3/4" />
+                  <div className="h-3 bg-slate-100 rounded-md w-1/2" />
+                  <div className="h-9 bg-slate-200 rounded-2xl w-full" />
+                </div>
+              ))}
+            </div>
+          )
         ) : resources.length === 0 ? (
           <EmptyState
-            title="Nothing here yet!"
-            message="No files have been uploaded to this selection yet. Click 'Upload Resource' to add worksheets, games, videos, or PDFs for your students!"
+            title="No files found matching criteria!"
+            message="No files have been uploaded for this filter selection yet. Click 'Upload Resource' to add interactive games, worksheets, PDFs, or media."
             icon="folder"
             actionLabel="Upload First File"
             onAction={() => {
@@ -560,39 +664,62 @@ export default function ContentManager() {
               setIsUploadOpen(true);
             }}
           />
-        ) : (
+        ) : viewMode === 'table' ? (
+          /* TABLE VIEW */
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b-2 border-slate-100 text-slate-400 font-extrabold uppercase tracking-wider">
-                  <th className="pb-3 pl-2">Resource</th>
-                  <th className="pb-3">Class &amp; Subject</th>
+                  <th className="pb-3 pl-2">Resource &amp; Type</th>
+                  <th className="pb-3">Class &amp; Course</th>
                   <th className="pb-3">Unit / Topic</th>
-                  <th className="pb-3">Type &amp; Size</th>
+                  <th className="pb-3">Size &amp; Date</th>
                   <th className="pb-3 text-center">Engagement</th>
                   <th className="pb-3 text-right pr-2">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {resources.map((res) => {
-                  const typeInfo = FILE_TYPE_MAP[res.file_type] || FILE_TYPE_MAP.other;
+                  const meta = getFileCategoryMeta(res.file_name, res.mime_type);
+                  const isCurDownloading = downloadingId === res.id;
+                  const isCurSuccess = downloadSuccessId === res.id;
+
                   return (
                     <tr key={res.id} className="hover:bg-slate-50/80 transition-colors group">
-                      {/* Title & file name */}
+                      {/* Title & file name with format badge */}
                       <td className="py-3.5 pl-2 max-w-xs">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-2xl">{typeInfo.emoji}</span>
+                        <div className="flex items-center gap-3">
                           <div
-                            onClick={() => handleOpenInNewTab(res)}
-                            className="cursor-pointer group/title"
-                            title="Click to open file in new tab as per format"
+                            className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg shadow-inner border flex-shrink-0 ${meta.iconBg} ${meta.badgeBorder} ${meta.iconColor}`}
                           >
-                            <div className="font-extrabold text-slate-800 text-sm group-hover:text-sky-600 transition-colors flex items-center gap-1.5">
-                              <span>{res.title}</span>
-                              <ExternalLink className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                            {renderCategoryIcon(meta.category, 'w-5 h-5')}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div
+                              onClick={() => {
+                                sounds.pop();
+                                setPreviewResource(res);
+                              }}
+                              className="font-extrabold text-slate-800 text-sm group-hover:text-sky-600 transition-colors cursor-pointer flex items-center gap-1.5"
+                              title="Click to preview file"
+                            >
+                              <span className="truncate">{res.title}</span>
+                              <Eye className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                             </div>
-                            <div className="text-[11px] text-slate-400 font-medium truncate max-w-[200px]">
-                              {res.file_name}
+
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span
+                                className="text-[11px] text-slate-400 font-medium truncate max-w-[170px]"
+                                title={res.file_name}
+                              >
+                                {res.file_name}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.2 rounded-md text-[9px] font-black uppercase border ${meta.badgeBg} ${meta.badgeColor} ${meta.badgeBorder}`}
+                              >
+                                {meta.ext.replace('.', '') || meta.category}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -600,71 +727,86 @@ export default function ContentManager() {
 
                       {/* Class & Subject */}
                       <td className="py-3.5">
-                        <div className="font-bold text-slate-700">{res.class_name || 'Class'}</div>
-                        <div className="text-[11px] text-slate-400 font-medium">
-                          {res.subject_name || 'General'}
+                        <div className="font-extrabold text-slate-700 flex items-center gap-1">
+                          <span>🎒</span>
+                          <span>{res.class_name || 'Classroom'}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-medium mt-0.5">
+                          {res.subject_name || 'General Course'}
                         </div>
                       </td>
 
                       {/* Unit */}
                       <td className="py-3.5">
-                        <span className="bg-sky-50 text-sky-800 font-bold px-2 py-0.5 rounded-lg border border-sky-200 text-[11px]">
-                          📖 {res.unit_name || 'Unit'}
+                        <span className="bg-sky-50 text-sky-800 font-bold px-2.5 py-1 rounded-xl border border-sky-200 text-[11px] inline-flex items-center gap-1">
+                          <span>📖</span>
+                          <span className="truncate max-w-[130px]">{res.unit_name || 'Unit Study'}</span>
                         </span>
                       </td>
 
-                      {/* Type & Size */}
+                      {/* Size & Upload Date */}
                       <td className="py-3.5">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full font-black text-[10px] border mr-2 ${typeInfo.badgeBg} ${typeInfo.badgeColor}`}
-                        >
-                          {typeInfo.label}
-                        </span>
-                        <span className="text-slate-400 font-semibold">
-                          {formatFileSize(res.file_size)}
-                        </span>
+                        <div className="font-bold text-slate-700 flex items-center gap-1">
+                          <HardDrive className="w-3 h-3 text-slate-400" />
+                          <span>{formatBytes(res.file_size)}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
+                          <Calendar className="w-3 h-3 text-slate-300" />
+                          <span>{formatUploadDate(res.created_at)}</span>
+                        </div>
                       </td>
 
                       {/* Engagement stats */}
                       <td className="py-3.5 text-center">
                         <div className="inline-flex items-center gap-2 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200 text-[11px] font-bold">
-                          <span title="Views">👁️ {res.view_count || 0}</span>
+                          <span title="Student Views">👁️ {res.view_count || 0}</span>
                           <span className="text-slate-300">•</span>
-                          <span title="Downloads">📥 {res.download_count || 0}</span>
+                          <span title="Student Downloads">📥 {res.download_count || 0}</span>
                         </div>
                       </td>
 
                       {/* Action buttons */}
                       <td className="py-3.5 text-right pr-2">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Open in New Tab Button */}
-                          <button
-                            onClick={() => handleOpenInNewTab(res)}
-                            title="Open file in new tab as per format"
-                            className="p-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-600 transition-colors"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </button>
-
-                          {/* Download Button */}
-                          <button
-                            onClick={() => handleDownloadFile(res)}
-                            title="Download File"
-                            className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-
-                          {/* Live Preview Button */}
+                          {/* Preview Button */}
                           <button
                             onClick={() => {
                               sounds.pop();
                               setPreviewResource(res);
                             }}
-                            title="Preview Kid View Modal"
-                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                            title="Inspect &amp; Preview File"
+                            className="p-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition-colors"
                           >
                             <Eye className="w-4 h-4" />
+                          </button>
+
+                          {/* Direct Download Button */}
+                          <button
+                            onClick={() => handleDownloadFile(res)}
+                            disabled={isCurDownloading}
+                            title="Direct Download File"
+                            className={`p-2 rounded-xl border transition-all ${
+                              isCurSuccess
+                                ? 'bg-emerald-600 text-white border-emerald-700'
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {isCurDownloading ? (
+                              <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                            ) : isCurSuccess ? (
+                              <Check className="w-4 h-4 text-white" />
+                            ) : (
+                              <Download className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          {/* Open in New Tab Button */}
+                          <button
+                            onClick={() => handleOpenInNewTab(res)}
+                            title="Open raw in new browser tab"
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition-colors"
+                          >
+                            <ExternalLink className="w-4 h-4" />
                           </button>
 
                           {/* Edit Details */}
@@ -675,8 +817,8 @@ export default function ContentManager() {
                               setEditTitle(res.title);
                               setEditDesc(res.description || '');
                             }}
-                            title="Edit Details"
-                            className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors"
+                            title="Edit Title &amp; Teacher Note"
+                            className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -685,7 +827,7 @@ export default function ContentManager() {
                           <button
                             onClick={() => handleDeleteResource(res.id, res.title)}
                             title="Delete Resource"
-                            className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors"
+                            className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -696,6 +838,159 @@ export default function ContentManager() {
                 })}
               </tbody>
             </table>
+          </div>
+        ) : (
+          /* CARDS / GRID VIEW */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {resources.map((res) => {
+              const meta = getFileCategoryMeta(res.file_name, res.mime_type);
+              const isCurDownloading = downloadingId === res.id;
+              const isCurSuccess = downloadSuccessId === res.id;
+
+              return (
+                <div
+                  key={res.id}
+                  className="bg-white rounded-3xl border-2 border-slate-100 shadow-sm hover:shadow-md hover:border-sky-300 transition-all flex flex-col overflow-hidden group"
+                >
+                  {/* Card Visual Banner */}
+                  <div
+                    onClick={() => {
+                      sounds.pop();
+                      setPreviewResource(res);
+                    }}
+                    className={`h-32 p-4 cursor-pointer flex flex-col justify-between relative overflow-hidden transition-all ${meta.iconBg}`}
+                  >
+                    <div className="flex items-center justify-between z-10">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-xs ${meta.badgeBg} ${meta.badgeColor} ${meta.badgeBorder}`}
+                      >
+                        {meta.label}
+                      </span>
+
+                      <span className="text-xs font-bold text-slate-500 bg-white/80 px-2 py-0.5 rounded-full shadow-xs">
+                        {formatBytes(res.file_size)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-center text-4xl transform group-hover:scale-110 transition-transform">
+                      {meta.emoji}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 z-10">
+                      <span className="truncate max-w-[120px] bg-white/70 px-2 py-0.5 rounded-md">
+                        {res.class_name || 'Class'}
+                      </span>
+                      <span className="bg-white/70 px-2 py-0.5 rounded-md">
+                        {formatUploadDate(res.created_at)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                    <div>
+                      <h4
+                        onClick={() => {
+                          sounds.pop();
+                          setPreviewResource(res);
+                        }}
+                        className="font-black text-slate-800 text-sm font-display line-clamp-2 hover:text-sky-600 transition-colors cursor-pointer mb-1"
+                        title={res.title}
+                      >
+                        {res.title}
+                      </h4>
+                      <p
+                        className="text-xs text-slate-400 font-medium truncate mb-2"
+                        title={res.file_name}
+                      >
+                        {res.file_name}
+                      </p>
+
+                      {res.description ? (
+                        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed bg-slate-50 p-2 rounded-xl">
+                          {res.description}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-300 italic">No notes added.</p>
+                      )}
+                    </div>
+
+                    {/* Unit & Stats Tag */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] font-bold text-slate-400">
+                      <span className="text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200 truncate max-w-[130px]">
+                        📖 {res.unit_name || 'Unit'}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span>👁️ {res.view_count || 0}</span>
+                        <span>📥 {res.download_count || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Action Bar */}
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                    <button
+                      onClick={() => {
+                        sounds.pop();
+                        setPreviewResource(res);
+                      }}
+                      className="btn-bouncy flex-1 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-pop-blue"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Preview</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDownloadFile(res)}
+                      disabled={isCurDownloading}
+                      title="Download file directly"
+                      className={`btn-bouncy p-2 rounded-xl border transition-all ${
+                        isCurSuccess
+                          ? 'bg-emerald-600 text-white border-emerald-700'
+                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                      }`}
+                    >
+                      {isCurDownloading ? (
+                        <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                      ) : isCurSuccess ? (
+                        <Check className="w-4 h-4 text-white" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenInNewTab(res)}
+                      title="Open in new tab"
+                      className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        sounds.pop();
+                        setEditingResource(res);
+                        setEditTitle(res.title);
+                        setEditDesc(res.description || '');
+                      }}
+                      title="Edit Details"
+                      className="p-2 rounded-xl bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteResource(res.id, res.title)}
+                      title="Delete"
+                      className="p-2 rounded-xl bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -732,7 +1027,7 @@ export default function ContentManager() {
               </button>
               <button
                 onClick={handleSaveEdit}
-                className="btn-bouncy px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs shadow-pop-yellow"
+                className="btn-bouncy px-5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-xs shadow-pop-yellow"
               >
                 Save Changes
               </button>
@@ -741,22 +1036,18 @@ export default function ContentManager() {
         </div>
       )}
 
-      {/* Modals for Curriculum Management */}
+      {/* Management Modals */}
       <FileUploadModal
         isOpen={isUploadOpen}
-        onClose={() => {
-          setIsUploadOpen(false);
-          loadResources();
-          loadClasses();
-        }}
-        onUploadSuccess={() => {
-          loadResources();
-          loadClasses();
-        }}
+        onClose={() => setIsUploadOpen(false)}
         classes={classes}
         initialClassId={filterClassId}
         initialSubjectId={filterSubjectId}
         initialUnitId={filterUnitId}
+        onUploadSuccess={() => {
+          loadResources();
+          loadClasses();
+        }}
       />
 
       <ClassManagerModal
@@ -775,7 +1066,6 @@ export default function ContentManager() {
         classes={classes}
         initialClassId={filterClassId}
         onSuccess={() => {
-          loadClasses();
           if (filterClassId) loadSubjects(filterClassId);
           loadResources();
         }}
@@ -792,40 +1082,12 @@ export default function ContentManager() {
         }}
       />
 
-      {/* Student View Modals for Teacher Preview */}
-      {previewResource && previewResource.file_type === 'pdf' && (
-        <PdfViewerModal
+      {/* Comprehensive File Visualization & Preview Modal */}
+      {previewResource && (
+        <FilePreviewModal
           resource={previewResource}
           onClose={() => setPreviewResource(null)}
-          onDownload={() => handleDownloadFile(previewResource)}
-        />
-      )}
-      {previewResource && previewResource.file_type === 'html' && (
-        <HtmlInteractiveModal
-          resource={previewResource}
-          onClose={() => setPreviewResource(null)}
-          onDownload={() => handleDownloadFile(previewResource)}
-        />
-      )}
-      {previewResource && ['audio', 'video'].includes(previewResource.file_type) && (
-        <MediaViewerModal
-          resource={previewResource}
-          onClose={() => setPreviewResource(null)}
-          onDownload={() => handleDownloadFile(previewResource)}
-        />
-      )}
-      {previewResource && previewResource.file_type === 'image' && (
-        <ImageLightboxModal
-          resource={previewResource}
-          onClose={() => setPreviewResource(null)}
-          onDownload={() => handleDownloadFile(previewResource)}
-        />
-      )}
-      {previewResource && previewResource.file_type === 'document' && (
-        <DocumentCardModal
-          resource={previewResource}
-          onClose={() => setPreviewResource(null)}
-          onDownload={() => handleDownloadFile(previewResource)}
+          onResourceUpdated={loadResources}
         />
       )}
     </div>
