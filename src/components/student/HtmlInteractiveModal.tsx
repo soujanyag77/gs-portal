@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, RotateCw, Maximize2, Minimize2, Sparkles, Gamepad2, ExternalLink } from 'lucide-react';
+import { X, RotateCw, Maximize2, Minimize2, Sparkles, Gamepad2, ExternalLink, Download } from 'lucide-react';
 import { ResourceItem } from '@/lib/types';
 import { sounds } from '../sound-effects';
 import { fireConfetti } from '../ConfettiCelebration';
@@ -9,9 +9,10 @@ import { fireConfetti } from '../ConfettiCelebration';
 interface HtmlInteractiveModalProps {
   resource: ResourceItem | null;
   onClose: () => void;
+  onDownload?: () => void;
 }
 
-export default function HtmlInteractiveModal({ resource, onClose }: HtmlInteractiveModalProps) {
+export default function HtmlInteractiveModal({ resource, onClose, onDownload }: HtmlInteractiveModalProps) {
   const [iframeKey, setIframeKey] = useState<number>(0);
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
 
@@ -27,7 +28,8 @@ export default function HtmlInteractiveModal({ resource, onClose }: HtmlInteract
     fireConfetti();
   };
 
-  const interactiveUrl = `${resource.file_url}?t=${iframeKey}`;
+  const baseUrl = resource.interactive_entry_url || resource.file_url || `/api/resources/${resource.id}/file`;
+  const interactiveUrl = baseUrl.includes('?') ? `${baseUrl}&t=${iframeKey}` : `${baseUrl}?t=${iframeKey}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-slate-900/80 backdrop-blur-md animate-pop">
@@ -68,6 +70,20 @@ export default function HtmlInteractiveModal({ resource, onClose }: HtmlInteract
               <ExternalLink className="w-4 h-4" />
               <span>New Tab ↗</span>
             </button>
+
+            {onDownload && (
+              <button
+                onClick={() => {
+                  sounds.star();
+                  onDownload();
+                }}
+                className="btn-bouncy flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold text-xs shadow-sm"
+                title="Download HTML File"
+              >
+                <Download className="w-4 h-4" />
+                <span>Save HTML</span>
+              </button>
+            )}
 
             <button
               onClick={handleCheer}

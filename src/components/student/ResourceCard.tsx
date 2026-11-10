@@ -96,9 +96,10 @@ export default function ResourceCard({ resource, onOpen, onDownload }: ResourceC
             onDownload(resource);
           }}
           title="Download File"
-          className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+          className="btn-bouncy py-2.5 px-3.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-2 border-emerald-200 font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-sm flex-shrink-0"
         >
-          <Download className="w-4 h-4" />
+          <Download className="w-3.5 h-3.5" />
+          <span>Save</span>
         </button>
       </div>
     </div>

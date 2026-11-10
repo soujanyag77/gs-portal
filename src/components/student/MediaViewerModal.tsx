@@ -85,7 +85,8 @@ export default function MediaViewerModal({ resource, onClose, onDownload }: Medi
     return `${mins}:${remaining < 10 ? '0' : ''}${remaining}`;
   };
 
-  const mediaUrl = `${resource.file_url}?t=${resource.id}`;
+  const baseMediaUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+  const mediaUrl = baseMediaUrl.includes('?') ? `${baseMediaUrl}&t=${resource.id}` : `${baseMediaUrl}?t=${resource.id}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/80 backdrop-blur-sm animate-pop">

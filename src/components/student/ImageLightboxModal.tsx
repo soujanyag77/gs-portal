@@ -17,7 +17,8 @@ export default function ImageLightboxModal({ resource, onClose, onDownload }: Im
 
   if (!resource) return null;
 
-  const imageUrl = `${resource.file_url}?t=${resource.id}`;
+  const baseImageUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+  const imageUrl = baseImageUrl.includes('?') ? `${baseImageUrl}&t=${resource.id}` : `${baseImageUrl}?t=${resource.id}`;
 
   const handleRotate = () => {
     sounds.pop();

@@ -187,7 +187,7 @@ export default function ContentManager() {
     const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
 
     if (resource.file_type === 'html') {
-      const interactiveUrl = resource.interactive_entry_url || `/api/resources/${resource.id}/interactive/index.html`;
+      const interactiveUrl = resource.interactive_entry_url || fileUrl;
       window.open(interactiveUrl, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -212,6 +212,18 @@ export default function ContentManager() {
     }
 
     window.open(fileUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadFile = (resource: ResourceItem) => {
+    sounds.star();
+    const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+    const downloadUrl = fileUrl.includes('?') ? `${fileUrl}&download=1` : `${fileUrl}?download=1`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = resource.file_name || 'download';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const classesUploadsSum = classes.reduce((sum, c) => sum + (c.resource_count || 0), 0);
@@ -634,6 +646,15 @@ export default function ContentManager() {
                             <ExternalLink className="w-4 h-4" />
                           </button>
 
+                          {/* Download Button */}
+                          <button
+                            onClick={() => handleDownloadFile(res)}
+                            title="Download File"
+                            className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+
                           {/* Live Preview Button */}
                           <button
                             onClick={() => {
@@ -776,42 +797,35 @@ export default function ContentManager() {
         <PdfViewerModal
           resource={previewResource}
           onClose={() => setPreviewResource(null)}
-          onDownload={() => {
-            window.open(`${previewResource.file_url}?download=1`, '_blank');
-          }}
+          onDownload={() => handleDownloadFile(previewResource)}
         />
       )}
       {previewResource && previewResource.file_type === 'html' && (
         <HtmlInteractiveModal
           resource={previewResource}
           onClose={() => setPreviewResource(null)}
+          onDownload={() => handleDownloadFile(previewResource)}
         />
       )}
       {previewResource && ['audio', 'video'].includes(previewResource.file_type) && (
         <MediaViewerModal
           resource={previewResource}
           onClose={() => setPreviewResource(null)}
-          onDownload={() => {
-            window.open(`${previewResource.file_url}?download=1`, '_blank');
-          }}
+          onDownload={() => handleDownloadFile(previewResource)}
         />
       )}
       {previewResource && previewResource.file_type === 'image' && (
         <ImageLightboxModal
           resource={previewResource}
           onClose={() => setPreviewResource(null)}
-          onDownload={() => {
-            window.open(`${previewResource.file_url}?download=1`, '_blank');
-          }}
+          onDownload={() => handleDownloadFile(previewResource)}
         />
       )}
       {previewResource && previewResource.file_type === 'document' && (
         <DocumentCardModal
           resource={previewResource}
           onClose={() => setPreviewResource(null)}
-          onDownload={() => {
-            window.open(`${previewResource.file_url}?download=1`, '_blank');
-          }}
+          onDownload={() => handleDownloadFile(previewResource)}
         />
       )}
     </div>

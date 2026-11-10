@@ -196,10 +196,10 @@ export default function StudentPortalPage() {
 
     const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
 
-    // 1. Interactive HTML5 Packages / Games -> Open standalone in new tab
+    // 1. Interactive HTML5 Packages / Games -> Open in new tab
     if (resource.file_type === 'html') {
-      const interactiveUrl = resource.interactive_entry_url || `/api/resources/${resource.id}/interactive/index.html`;
-      window.open(interactiveUrl, '_blank', 'noopener,noreferrer');
+      const openUrl = resource.interactive_entry_url || fileUrl;
+      window.open(openUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -215,13 +215,9 @@ export default function StudentPortalPage() {
       return;
     }
 
-    // 4. Word / Office Documents (.docx, .pptx, .xlsx) -> Viewer or Direct Stream in new tab
+    // 4. Word / Office Documents (.docx, .pptx, .xlsx) -> Interactive Reader or Stream in new tab
     if (resource.file_type === 'document' || resource.file_name?.match(/\.(docx?|pptx?|xlsx?)$/i)) {
-      if (fileUrl.startsWith('http')) {
-        window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=false`, '_blank', 'noopener,noreferrer');
-      } else {
-        window.open(fileUrl, '_blank', 'noopener,noreferrer');
-      }
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -234,7 +230,13 @@ export default function StudentPortalPage() {
     fireConfetti();
     logStudentEvent(resource, 'download');
     const fileUrl = resource.file_url || `/api/resources/${resource.id}/file`;
-    window.open(`${fileUrl}?download=1`, '_blank');
+    const downloadUrl = fileUrl.includes('?') ? `${fileUrl}&download=1` : `${fileUrl}?download=1`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = resource.file_name || 'download';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const toggleUnitAccordion = (unitId: string) => {
@@ -572,6 +574,7 @@ export default function StudentPortalPage() {
         <HtmlInteractiveModal
           resource={activeHtml}
           onClose={() => setActiveHtml(null)}
+          onDownload={() => handleDownloadResource(activeHtml)}
         />
       )}
 

@@ -16,7 +16,8 @@ export default function PdfViewerModal({ resource, onClose, onDownload }: PdfVie
 
   if (!resource) return null;
 
-  const pdfUrl = `${resource.file_url}?t=${Date.now()}`;
+  const basePdfUrl = resource.file_url || `/api/resources/${resource.id}/file`;
+  const pdfUrl = basePdfUrl.includes('?') ? `${basePdfUrl}&t=${Date.now()}` : `${basePdfUrl}?t=${Date.now()}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/70 backdrop-blur-sm animate-pop">
